@@ -8,6 +8,7 @@ import type {
   Scores,
 } from "@/lib/types";
 import { parseScoreXlsx } from "@/lib/xlsxParse";
+import { extractTextFromPdf } from "@/lib/pdfExtract";
 import ScoreTable from "@/components/ScoreTable";
 import ReportPreview from "@/components/ReportPreview";
 import WixText from "@/components/WixText";
@@ -66,7 +67,7 @@ export default function Home() {
       return;
     }
     if (transcriptFiles.length === 0) {
-      setError("文字起こしファイル（.txt）を1つ以上アップロードしてください");
+      setError("文字起こしファイル（.txt または .pdf）を1つ以上アップロードしてください");
       return;
     }
 
@@ -74,7 +75,19 @@ export default function Home() {
     try {
       // 文字起こしを結合（ファイル名を区切りに）
       const texts = await Promise.all(
-        transcriptFiles.map(async (f) => `【ファイル: ${f.name}】\n${await f.text()}`)
+        transcriptFiles.map(async (f) => {
+          let content: string;
+          if (f.type === 'application/pdf' || f.name.endsWith('.pdf')) {
+            try {
+              content = await extractTextFromPdf(f);
+            } catch (e) {
+              throw new Error(`PDF読み取り失敗 (${f.name}): ${e instanceof Error ? e.message : '不明なエラー'}`);
+            }
+          } else {
+            content = await f.text();
+          }
+          return `【ファイル: ${f.name}】\n${content}`;
+        })
       );
       const transcript = texts.join("\n\n");
 
@@ -209,11 +222,11 @@ export default function Home() {
         <div className="space-y-4">
           <div>
             <label className={labelCls}>
-              インタビュー文字起こし（.txt 複数可・話者ラベル付き） *
+              インタビュー文字起こし（.txt / .pdf 複数可・話者ラベル付き） *
             </label>
             <input
               type="file"
-              accept=".txt,text/plain"
+              accept=".txt,.pdf,text/plain,application/pdf"
               multiple
               className="text-sm"
               onChange={(e) =>
