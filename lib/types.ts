@@ -104,6 +104,7 @@ export interface GenerateResult {
   scores: Scores;
   report_sections: ReportSections;
   wix_fields: WixFields;
+  attribute: string;
 }
 
 export interface GenerateRequest {

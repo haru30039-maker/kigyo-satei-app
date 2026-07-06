@@ -2,7 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // ワーカーのパスを設定（Next.js でのバンドル時に必要）
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.js/pdf.worker.min.js';
 }
 
 export async function extractTextFromPdf(file: File): Promise<string> {

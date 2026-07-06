@@ -127,7 +127,12 @@ export default function Home() {
         throw new Error(data?.error ?? `エラー (${res.status})`);
       }
 
-      setResult(data as GenerateResult);
+      const result = data as GenerateResult;
+      setResult(result);
+      // 生成結果の属性で企業情報を更新
+      if (result.attribute) {
+        setCompany((prev) => ({ ...prev, attribute: result.attribute }));
+      }
       setTab("score");
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成に失敗しました");
