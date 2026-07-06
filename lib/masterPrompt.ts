@@ -156,7 +156,51 @@ const JSON_OUTPUT_INSTRUCTION = `
 - report_sections はレポートの各ページに対応するテキストを入れる（PPTXの生成はシステム側で行う）。
 - draft_note には「本レポートは企業確認前ドラフトです」の趣旨の注記を1行入れる。
 - 情報不足で作れないセクションは、要素を空にせず「情報不足」と明記した上で、missing_info に追加で聞くべき質問を入れる。
-- 出力は上記JSONスキーマのみ。前置き・後書き・Markdown装飾は一切含めないこと。
+
+### JSONスキーマ（この構造に厳密に従うこと）
+
+\`\`\`
+{
+  "scores": {
+    // vision(4項目) / system(5) / environment(4) / compensation(5) /
+    // relationships(5) / growth(5) / uniqueness(3) の7キー必須。項目順は評価表と同一。
+    "vision": {
+      "items": [{ "label": "評価表の項目文言", "score": 1〜5の整数, "evidence": "根拠となる発言・観察" }],
+      "subtotal": scoreの合計(整数), "max": 満点(整数), "normalized": 100点換算(整数)
+    },
+    "system": {…}, "environment": {…}, "compensation": {…},
+    "relationships": {…}, "growth": {…}, "uniqueness": {…}
+  },
+  "report_sections": {
+    "draft_note": "企業確認前ドラフトの注記1行",
+    "gap_table": [{ "job_posting": "求人票の表現", "reality": "実際の現場", "student_voice": "学生の本音" }],
+    "interviews": [{ "speaker": "話者（役職等）", "qa": [{ "q": "質問", "a": "引用（文字起こしに忠実に）", "insight": "見えたこと" }] }],
+    "office": { "rows": [{ "label": "場所/広さ/雰囲気 等", "value": "内容" }], "insight": "見えたこと" },
+    "schedule": { "roles": [{ "role": "職種名", "timeline": [{ "time": "8:30", "activity": "内容" }] }], "busy_note": "繁忙期注記", "insight": "見えたこと" },
+    "events": { "annual": [{ "month": "4月", "name": "行事名" }], "daily": "日常の様子", "quote": "社長引用", "insight": "見えたこと" },
+    "fit": { "good_fit": [{ "point": "合う人", "reason": "理由" }], "bad_fit": [{ "point": "合わない人", "reason": "理由" }] },
+    "target_persona": { "wanted_profile": "求める人材像", "persona": "ペルソナ", "traits": ["具体的特徴"] },
+    "job_posting_proposal": [{ "current": "現状", "proposal": "修正案", "effect": "見込める効果" }],
+    "improvement_proposals": [{ "title": "提案名", "issue": "現状の課題", "proposal": "改善案", "effect": "見込める効果" }],
+    "summary": "総括",
+    "missing_info": ["追加で聞くべき質問"]
+  },
+  "wix_fields": {
+    "summary_lead": "査定サマリー4〜6行",
+    "founder_quote": { "text": "代表の言葉", "name_title": "役職・氏名" },
+    "insight_cards": [{ "title": "テーマ見出し", "body": "本文3〜5文" }],   // 4件
+    "interviewee_tags": ["社長", "入社◯年目社員"],
+    "real_voice_note": "Real Voice紹介文",
+    "numbers_cards": [{ "label": "項目名", "number": "大きく見せる数字", "note": "解説3〜4文" }],  // 4件
+    "chart_tabs": [{ "tab": "評価制度/裁量/給与・福利厚生/残業・休日/人間関係", "body": "実態の解説", "fit_line": "合う・おすすめ1行", "mismatch_line": "合わない1行" }],  // 5件
+    "office_captions": ["写真キャプション"],  // 5件
+    "fits_tags": ["刺さる人タグ"],       // 8件
+    "mismatch_tags": ["合わない人タグ"]  // 8件
+  }
+}
+\`\`\`
+
+- 出力は上記JSONスキーマに従った**単一のJSONオブジェクトのみ**。前置き・後書き・Markdown装飾（\`\`\`jsonフェンス等）は一切含めないこと。
 `;
 
 export const MASTER_PROMPT = MASTER_PROMPT_BODY + JSON_OUTPUT_INSTRUCTION;

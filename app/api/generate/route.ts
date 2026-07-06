@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { MASTER_PROMPT } from "@/lib/masterPrompt";
-import { GENERATE_OUTPUT_SCHEMA } from "@/lib/schema";
 import { CATEGORIES } from "@/lib/scoring";
 import type { GenerateRequest } from "@/lib/types";
 
@@ -68,6 +67,19 @@ function buildUserContent(req: GenerateRequest): string {
   return parts.join("\n\n---\n\n");
 }
 
+// 前置きや ```json フェンスが混ざっても最初の { から最後の } までを取り出してパースする
+function extractJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start === -1 || end <= start) throw new Error("no JSON object found");
+    return JSON.parse(trimmed.slice(start, end + 1));
+  }
+}
+
 export async function POST(request: NextRequest) {
   const started = Date.now();
 
@@ -100,6 +112,8 @@ export async function POST(request: NextRequest) {
     // クレジット節約方針：
     // - スコア案・レポート・Wixテキストを 1回のリクエストでまとめて生成
     // - 固定部分（マスタープロンプト）は prompt caching（cache_control: ephemeral）
+    // 注: このスキーマは structured output の grammar サイズ上限を超えるため、
+    //     マスタープロンプト末尾の「JSONのみ返す」指示＋パースで対応している。
     const response = await client.messages.create({
       model,
       max_tokens: 16000,
@@ -110,12 +124,6 @@ export async function POST(request: NextRequest) {
           cache_control: { type: "ephemeral" },
         },
       ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: GENERATE_OUTPUT_SCHEMA,
-        },
-      },
       messages: [{ role: "user", content: userContent }],
     });
 
@@ -145,7 +153,7 @@ export async function POST(request: NextRequest) {
 
     let result: unknown;
     try {
-      result = JSON.parse(textBlock.text);
+      result = extractJson(textBlock.text);
     } catch {
       return NextResponse.json(
         { error: "生成結果のJSON解析に失敗しました。もう一度お試しください。" },
