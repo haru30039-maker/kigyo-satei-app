@@ -1,11 +1,5 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  experimental: {
-    turbopack: {
-      resolveExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
-    },
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
