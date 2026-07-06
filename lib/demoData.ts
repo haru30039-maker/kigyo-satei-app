@@ -218,4 +218,5 @@ export const DEMO_RESULT: GenerateResult = {
       "転職前提の人",
     ],
   },
+  attribute: "水属性",
 };
