@@ -1,3 +1,5 @@
+'use client';
+
 import * as pdfjsLib from 'pdfjs-dist';
 
 // ワーカーのパスを設定（Next.js でのバンドル時に必要）
