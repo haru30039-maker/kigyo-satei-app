@@ -28,9 +28,11 @@ const PAGE_H = 5.63;
 
 export function buildPptx(
   data: ExportRequest,
-  opts: { chartPath?: string } = {}
+  opts: { chartPath?: string; anonymous?: boolean } = {}
 ): PptxGenJS {
   const { companyInfo, scores, report } = data;
+  // 既定は匿名版。実名版はチーム内用（社外提出不可）。
+  const anonymous = opts.anonymous !== false;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";
@@ -110,6 +112,16 @@ export function buildPptx(
       h: 0.18,
       fill: { color: YELLOW },
     });
+    if (!anonymous) {
+      slide.addShape("rect", {
+        x: 0.6, y: 0.35, w: 4.6, h: 0.42, fill: { color: "C62828" },
+      });
+      slide.addText("チーム内用・実名版（社外提出不可）", {
+        x: 0.6, y: 0.35, w: 4.6, h: 0.42,
+        fontFace: FONT, fontSize: 12, bold: true, color: WHITE,
+        align: "center", valign: "middle",
+      });
+    }
     slide.addText("学生企業査定レポート", {
       x: 0.6,
       y: 1.0,
@@ -420,7 +432,10 @@ export function buildPptx(
   for (const interview of report.interviews) {
     // 2問ずつ1ページ
     for (let i = 0; i < interview.qa.length; i += 2) {
-      const slide = bodySlide(`インタビュー：${interview.speaker}`);
+      const speakerLabel = anonymous
+        ? interview.speaker
+        : interview.speaker_internal || interview.speaker;
+      const slide = bodySlide(`インタビュー：${speakerLabel}`);
       const pair = interview.qa.slice(i, i + 2);
       let y = 1.0;
       for (const qa of pair) {

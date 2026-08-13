@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  let body: ExportRequest & { kind?: "report" | "scores" };
+  let body: ExportRequest & { kind?: "report" | "scores"; anonymous?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -21,13 +21,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const kind = body.kind === "scores" ? "scores" : "report";
-    const pptx = kind === "scores" ? buildScoreDeck(body) : buildPptx(body);
+    const anonymous = body.anonymous !== false;
+    const pptx =
+      kind === "scores"
+        ? buildScoreDeck(body, { anonymous })
+        : buildPptx(body, { anonymous });
     const buf = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 
-    const filename =
-      kind === "scores"
-        ? `${body.companyInfo.name}_スコア根拠説明.pptx`
-        : `${body.companyInfo.name}_査定レポート.pptx`;
+    const suffix = anonymous ? "匿名版" : "実名版";
+    const base =
+      kind === "scores" ? "スコア根拠説明" : "査定レポート";
+    const filename = `${body.companyInfo.name}_${base}（${suffix}）.pptx`;
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

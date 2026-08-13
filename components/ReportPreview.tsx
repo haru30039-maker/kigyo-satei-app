@@ -40,6 +40,8 @@ export default function ReportPreview({
   demo?: boolean;
 }) {
   const [downloading, setDownloading] = useState(false);
+  // 既定は匿名版（協力者に匿名を約束しているため）。実名版はチーム内用。
+  const [anonymous, setAnonymous] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function downloadPptx(kind: "report" | "scores" = "report") {
@@ -49,7 +51,7 @@ export default function ReportPreview({
       const res = await fetch("/api/export-pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyInfo, scores, report, wix, kind }),
+        body: JSON.stringify({ companyInfo, scores, report, wix, kind, anonymous }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -59,10 +61,10 @@ export default function ReportPreview({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        kind === "scores"
-          ? `${companyInfo.name}_スコア根拠説明.pptx`
-          : `${companyInfo.name}_査定レポート.pptx`;
+      const base = kind === "scores" ? "スコア根拠説明" : "査定レポート";
+      a.download = `${companyInfo.name}_${base}（${
+        anonymous ? "匿名版" : "実名版"
+      }）.pptx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -74,6 +76,30 @@ export default function ReportPreview({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3">
+        <span className="text-xs font-bold text-gray-600">ダウンロード形式</span>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="radio"
+            checked={anonymous}
+            onChange={() => setAnonymous(true)}
+          />
+          <span className="font-bold">匿名版</span>
+          <span className="text-xs text-gray-500">（企業提出・Web掲載用）</span>
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="radio"
+            checked={!anonymous}
+            onChange={() => setAnonymous(false)}
+          />
+          <span className="font-bold">実名版</span>
+          <span className="text-xs text-gray-500">
+            （チーム内用・話者名と出典ファイル入り／社外提出不可）
+          </span>
+        </label>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={() => downloadPptx("report")}

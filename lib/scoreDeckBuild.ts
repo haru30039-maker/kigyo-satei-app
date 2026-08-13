@@ -20,8 +20,12 @@ export interface ScoreDeckRequest {
   report: ReportSections;
 }
 
-export function buildScoreDeck(data: ScoreDeckRequest): PptxGenJS {
+export function buildScoreDeck(
+  data: ScoreDeckRequest,
+  opts: { anonymous?: boolean } = {}
+): PptxGenJS {
   const { companyInfo, scores, report } = data;
+  const anonymous = opts.anonymous !== false;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";
@@ -50,6 +54,14 @@ export function buildScoreDeck(data: ScoreDeckRequest): PptxGenJS {
     const s = pptx.addSlide();
     s.background = { color: BLACK };
     s.addShape("rect", { x: 0, y: 4.9, w: PAGE_W, h: 0.18, fill: { color: YELLOW } });
+    if (!anonymous) {
+      s.addShape("rect", { x: 0.6, y: 0.35, w: 4.6, h: 0.42, fill: { color: "C62828" } });
+      s.addText("チーム内用・実名版（社外提出不可）", {
+        x: 0.6, y: 0.35, w: 4.6, h: 0.42,
+        fontFace: FONT, fontSize: 12, bold: true, color: WHITE,
+        align: "center", valign: "middle",
+      });
+    }
     s.addText("評価スコアの根拠説明", {
       x: 0.6, y: 1.2, w: PAGE_W - 1.2, h: 0.6,
       fontFace: FONT, fontSize: 20, color: YELLOW, bold: true,
@@ -203,7 +215,9 @@ export function buildScoreDeck(data: ScoreDeckRequest): PptxGenJS {
       [
         { text: "主な出典  ", options: { bold: true, color: BLACK } },
         {
-          text: "社長・社員インタビュー（匿名）／見学記録／求人票・企業HP",
+          text: anonymous
+            ? "社長・社員インタビュー（匿名）／見学記録／求人票・企業HP"
+            : "アップロードした文字起こし・見学記録・求人票／企業HP（実名版）",
           options: { color: GRAY_TEXT },
         },
       ],

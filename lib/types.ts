@@ -38,7 +38,10 @@ export interface InterviewQA {
 }
 
 export interface Interview {
+  /** 匿名表記（既定・企業提出用）。例：「現場のベテラン社員」 */
   speaker: string;
+  /** 実名版（チーム内用）。文字起こし上の呼称・役職＋出典ファイル名 */
+  speaker_internal?: string;
   qa: InterviewQA[];
 }
 
