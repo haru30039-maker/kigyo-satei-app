@@ -4,7 +4,9 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 // 認証ガード（Next.js 16 では middleware.ts の後継が proxy.ts）
 // /login と /api/auth/* 以外のすべてのページ・APIでセッションクッキーを検証する。
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+// /daihon/view は台本の閲覧専用ページ。台本データはURLフラグメントに埋め込まれて
+// おりサーバーに保存されないため、発表者がスマホでログインなしで開けるよう公開する。
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/daihon/view"];
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

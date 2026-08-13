@@ -46,6 +46,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
   const [tab, setTab] = useState<Tab>("score");
 
   const normalizedScores = useMemo(() => {
@@ -124,12 +125,28 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error ?? `エラー (${res.status})`);
+      // サーバー基盤(Vercel等)がタイムアウトすると JSON でないエラーページが返ることが
+      // あるため、無条件に res.json() せずテキストで受けて自前でパースする。
+      const raw = await res.text();
+      let data: { error?: string } & Partial<GenerateResult> = {};
+      let isJson = true;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        isJson = false;
+      }
+      if (!res.ok || !isJson) {
+        if (res.status === 401) {
+          throw new Error("セッションが切れています。再ログインしてください。");
+        }
+        throw new Error(
+          data?.error ??
+            `サーバーエラー (HTTP ${res.status})。生成に時間がかかりすぎてタイムアウトした可能性があります。時間をおいて再試行するか、文字起こしファイルを分けて生成してください。`
+        );
       }
 
       const result = data as GenerateResult;
+      setIsDemo(false);
       setResult(result);
       // 生成結果の属性で企業情報を更新
       if (result.attribute) {
@@ -163,12 +180,20 @@ export default function Home() {
             #ともあゆ 企業査定チーム専用 ／ 文字起こし・生成結果はサーバーに保存されません
           </p>
         </div>
-        <button
-          onClick={logout}
-          className="text-xs text-gray-500 underline hover:text-gray-800"
-        >
-          ログアウト
-        </button>
+        <div className="flex items-center gap-4">
+          <a
+            href="/daihon"
+            className="text-xs font-bold text-gray-700 underline hover:text-gray-900"
+          >
+            報告台本ジェネレーター
+          </a>
+          <button
+            onClick={logout}
+            className="text-xs text-gray-500 underline hover:text-gray-800"
+          >
+            ログアウト
+          </button>
+        </div>
       </header>
 
       {/* ===== 入力フォーム ===== */}
@@ -314,6 +339,7 @@ export default function Home() {
                 ...prev,
                 name: prev.name || "株式会社サンプル",
               }));
+              setIsDemo(true);
               setResult(structuredClone(DEMO_RESULT));
               setTab("score");
             }}
@@ -325,6 +351,12 @@ export default function Home() {
       </div>
 
       {/* ===== 結果タブ ===== */}
+      {result && isDemo && (
+        <div className="mb-4 rounded-lg border-2 border-red-400 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          ⚠️ サンプルデータ（架空企業）を表示中です。実データの生成結果ではありません。
+          このままダウンロード・提出しないでください。
+        </div>
+      )}
       {result && (
         <section>
           <div className="flex border-b border-gray-300 mb-5">
@@ -360,6 +392,7 @@ export default function Home() {
               scores={result.scores}
               wix={result.wix_fields}
               companyInfo={company}
+              demo={isDemo}
             />
           )}
 

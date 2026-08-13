@@ -114,9 +114,11 @@ export async function POST(request: NextRequest) {
     // - 固定部分（マスタープロンプト）は prompt caching（cache_control: ephemeral）
     // 注: このスキーマは structured output の grammar サイズ上限を超えるため、
     //     マスタープロンプト末尾の「JSONのみ返す」指示＋パースで対応している。
-    const response = await client.messages.create({
+    // ストリーミングで受信し完了までまとめる（非ストリーミングの長時間リクエスト制限と
+    // 接続アイドルタイムアウトを回避。インタビューが多い案件は生成が数分かかる）。
+    const stream = client.messages.stream({
       model,
-      max_tokens: 16000,
+      max_tokens: 32000,
       system: [
         {
           type: "text",
@@ -126,6 +128,7 @@ export async function POST(request: NextRequest) {
       ],
       messages: [{ role: "user", content: userContent }],
     });
+    const response = await stream.finalMessage();
 
     if (response.stop_reason === "refusal") {
       return NextResponse.json(

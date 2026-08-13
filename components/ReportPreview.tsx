@@ -31,11 +31,13 @@ export default function ReportPreview({
   scores,
   wix,
   companyInfo,
+  demo = false,
 }: {
   report: ReportSections;
   scores: Scores;
   wix: WixFields;
   companyInfo: CompanyInfo;
+  demo?: boolean;
 }) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,10 +74,14 @@ export default function ReportPreview({
       <div className="flex items-center gap-3">
         <button
           onClick={downloadPptx}
-          disabled={downloading}
+          disabled={downloading || demo}
           className="px-5 py-2.5 rounded-lg bg-gray-900 text-yellow-400 font-bold hover:bg-gray-700 disabled:opacity-50"
         >
-          {downloading ? "生成中…" : ".pptx をダウンロード"}
+          {demo
+            ? "サンプル表示中はダウンロード不可"
+            : downloading
+              ? "生成中…"
+              : ".pptx をダウンロード"}
         </button>
         {error && <span className="text-red-600 text-sm">{error}</span>}
       </div>

@@ -12,6 +12,8 @@
     "@anthropic-ai/sdk": "^0.110.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
+    "jszip": "^3.10.1",
+    "lz-string": "^1.5.0",
     "next": "16.2.10",
     "pdfjs-dist": "^6.1.200",
     "pptxgenjs": "^4.0.1",
