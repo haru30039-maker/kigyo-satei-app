@@ -119,3 +119,39 @@ export interface GenerateRequest {
   /** report/wix ステージに渡す、確定済みスコアの要約文字列 */
   scoresSummary?: string;
 }
+
+/**
+ * 分割生成でレポートの一部セクションが欠けた場合でも pptx 生成が落ちないよう
+ * 既定値で補完する。欠けたセクションは「情報不足」と明示される。
+ */
+export function withReportDefaults(
+  r: Partial<ReportSections>
+): ReportSections {
+  return {
+    draft_note: r.draft_note ?? "本レポートは企業確認前ドラフトです。",
+    gap_table: r.gap_table ?? [],
+    interviews: r.interviews ?? [],
+    office: { rows: r.office?.rows ?? [], insight: r.office?.insight ?? "情報不足" },
+    schedule: {
+      roles: r.schedule?.roles ?? [],
+      busy_note: r.schedule?.busy_note ?? "",
+      insight: r.schedule?.insight ?? "情報不足",
+    },
+    events: {
+      annual: r.events?.annual ?? [],
+      daily: r.events?.daily ?? "",
+      quote: r.events?.quote ?? "",
+      insight: r.events?.insight ?? "情報不足",
+    },
+    fit: { good_fit: r.fit?.good_fit ?? [], bad_fit: r.fit?.bad_fit ?? [] },
+    target_persona: {
+      wanted_profile: r.target_persona?.wanted_profile ?? "情報不足",
+      persona: r.target_persona?.persona ?? "情報不足",
+      traits: r.target_persona?.traits ?? [],
+    },
+    job_posting_proposal: r.job_posting_proposal ?? [],
+    improvement_proposals: r.improvement_proposals ?? [],
+    summary: r.summary ?? "情報不足",
+    missing_info: r.missing_info ?? [],
+  };
+}

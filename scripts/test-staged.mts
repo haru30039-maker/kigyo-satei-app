@@ -1,22 +1,20 @@
-// 分割生成の実測テスト（本番ルートと同じプロンプト・同じ呼び出し構造）
+// 5段階分割の実測テスト（本番ルートと同じプロンプト・同じ呼び出し構造）
 import fs from "node:fs";
+import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { STAGED_SYSTEM_PROMPT, STAGE_MAX_TOKENS, stageInstruction, type GenerateStage } from "../lib/masterPrompt";
-import { extractPptxSlideTexts } from "../lib/daihon";
 import { CATEGORIES } from "../lib/scoring";
 
-// 入力は generate-local と同じ組み立て（フル11ファイル）
-const { execSync } = await import("node:child_process");
-const path = await import("node:path");
 const DATA_DIR = "/Users/haruna/Downloads/安西工業関連";
-const dirs = [
-  path.join(DATA_DIR, "2026:06:24査定訪問インタビュー文字起こし"),
-  path.join(DATA_DIR, "2026:07:30査定訪問インタビュー文字起こし"),
-];
-// 既に抽出済みのテキストを再利用（scratchpad/transcripts）
 const tdir = "/private/tmp/claude-501/-Users-haruna-Downloads-------/ce62010f-4c19-42a8-9b2e-ff193332e58e/scratchpad/transcripts";
-const texts = fs.readdirSync(tdir).filter(f => f.endsWith(".txt")).map(f =>
+const DUP = Number(process.env.DUP ?? "1"); // 入力を何倍にするか（4日分の想定検証用）
+
+let texts = fs.readdirSync(tdir).filter(f => f.endsWith(".txt")).map(f =>
   `【ファイル: ${f.replace(".txt", ".pdf")}】\n${fs.readFileSync(path.join(tdir, f), "utf-8")}`);
+if (DUP > 1) {
+  const base = [...texts];
+  for (let i = 1; i < DUP; i++) texts = texts.concat(base.map(t => t.replace("【ファイル: ", `【ファイル: (${i + 1}日目)`)));
+}
 const transcript = texts.join("\n\n");
 const jobPosting = fs.readFileSync(path.join(DATA_DIR, "レポート作成サイトで生成したデータ/安西工業HP・採用サイトまとめ.txt"), "utf-8");
 const visitNotes = fs.readFileSync(path.join(DATA_DIR, "レポート作成サイトで生成したデータ/学生メモ.txt"), "utf-8");
@@ -27,14 +25,16 @@ const userContent = [
   `# 見学メモ\n${visitNotes.trim()}`,
   `# インタビュー文字起こし\n${transcript.trim()}`,
 ].join("\n\n---\n\n");
-console.log(`入力: ${userContent.length}文字 / 文字起こし${texts.length}本`);
+console.log(`入力: ${userContent.length.toLocaleString()}文字 / 文字起こし${texts.length}本 (DUP=${DUP})`);
 
 const env = fs.readFileSync(new URL("../.env.local", import.meta.url), "utf-8");
 const client = new Anthropic({ apiKey: env.match(/^ANTHROPIC_API_KEY=(.+)$/m)![1].trim() });
 
 let scoresSummary: string | undefined;
 const results: Record<string, unknown> = {};
-for (const stage of ["scores", "report", "wix"] as GenerateStage[]) {
+const stages: GenerateStage[] = ["warmup", "scores", "report_main", "report_extra", "wix"];
+let total = 0;
+for (const stage of stages) {
   const t0 = Date.now();
   const stream = client.messages.stream({
     model: "claude-sonnet-4-6",
@@ -50,18 +50,26 @@ for (const stage of ["scores", "report", "wix"] as GenerateStage[]) {
   });
   const res = await stream.finalMessage();
   const sec = Math.round((Date.now() - t0) / 1000);
+  total += sec;
   const u = res.usage;
-  console.log(`[${stage}] ${sec}秒 / stop=${res.stop_reason} / in=${u.input_tokens} out=${u.output_tokens} / cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens}`);
+  console.log(`[${stage}] ${sec}秒 stop=${res.stop_reason} out=${u.output_tokens} cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens}`);
+  if (stage === "warmup") continue;
   const tb = res.content.find((b) => b.type === "text") as { text: string };
   const t = tb.text.trim();
-  const obj = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
-  Object.assign(results, obj);
+  const obj = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1)) as Record<string, unknown>;
+  if (obj.report_sections) {
+    results.report_sections = { ...(results.report_sections as object ?? {}), ...(obj.report_sections as object) };
+  } else {
+    Object.assign(results, obj);
+  }
   if (stage === "scores") {
     const scores = (obj as any).scores;
     scoresSummary = CATEGORIES.map((c) => `${c.fullLabel}: ${scores[c.key]?.normalized ?? 0}/100点`).join(" / ");
-    console.log(`  スコア: ${scoresSummary}`);
+    console.log(`  → ${scoresSummary}`);
   }
 }
 fs.writeFileSync("/tmp/staged_test.json", JSON.stringify(results, null, 2));
-const keys = Object.keys(results);
-console.log(`最終キー: ${keys.join(", ")}`);
+const rs = results.report_sections as Record<string, unknown>;
+console.log(`\n合計 ${total}秒 / 最長ステージが300秒未満なら本番OK`);
+console.log(`report_sections キー: ${Object.keys(rs ?? {}).join(", ")}`);
+console.log(`interviews: ${(rs?.interviews as unknown[])?.length ?? 0}話者 / トップキー: ${Object.keys(results).join(", ")}`);

@@ -125,7 +125,14 @@ export async function POST(request: NextRequest) {
     // 分割生成: stage 指定時はそのパートのみ生成する。
     // システムプロンプト＋入力資料（userContent）は3ステージで同一なので、
     // cache_control を userContent 側に付けることで2回目以降はキャッシュが効く。
-    const stage = (["scores", "report", "wix"] as const).includes(
+    const stage = ([
+      "warmup",
+      "scores",
+      "report",
+      "report_main",
+      "report_extra",
+      "wix",
+    ] as const).includes(
       body.stage as GenerateStage
     )
       ? (body.stage as GenerateStage)
@@ -187,6 +194,23 @@ export async function POST(request: NextRequest) {
         },
         { status: 502 }
       );
+    }
+
+    // warmup はキャッシュ作成が目的。本文は不要
+    if (stage === "warmup") {
+      console.log(
+        JSON.stringify({
+          route: "generate",
+          stage: "warmup",
+          model,
+          input_chars: userContent.length,
+          duration_ms: Date.now() - started,
+          cache_creation_input_tokens:
+            response.usage.cache_creation_input_tokens,
+          cache_read_input_tokens: response.usage.cache_read_input_tokens,
+        })
+      );
+      return NextResponse.json({ ok: true });
     }
 
     const textBlock = response.content.find((b) => b.type === "text");

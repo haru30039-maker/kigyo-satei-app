@@ -9,6 +9,7 @@ import type {
   GenerateResult,
   Scores,
 } from "@/lib/types";
+import { withReportDefaults } from "@/lib/types";
 import { parseScoreXlsx } from "@/lib/xlsxParse";
 import { extractTextFromPdf } from "@/lib/pdfExtract";
 import ScoreTable from "@/components/ScoreTable";
@@ -66,9 +67,11 @@ export default function Home() {
   // 分割生成の途中結果（リトライ時に完了済みステージを再利用する）
   const partialRef = useRef<{
     key: string;
+    warmed?: boolean;
     scores?: Scores;
     attribute?: string;
-    report?: GenerateResult["report_sections"];
+    reportMain?: Partial<GenerateResult["report_sections"]>;
+    reportExtra?: Partial<GenerateResult["report_sections"]>;
     wix?: GenerateResult["wix_fields"];
   } | null>(null);
 
@@ -147,7 +150,7 @@ export default function Home() {
       // サーバー基盤(Vercel等)がタイムアウトすると JSON でないエラーページが返ることが
       // あるため、無条件に res.json() せずテキストで受けて自前でパースする。
       async function callStage<T>(
-        stage: "scores" | "report" | "wix",
+        stage: "warmup" | "scores" | "report_main" | "report_extra" | "wix",
         scoresSummary?: string
       ): Promise<T> {
         const res = await fetch("/api/generate", {
@@ -175,9 +178,16 @@ export default function Home() {
         return data as T;
       }
 
+      // ⓪ ウォームアップ（資料を読み込ませてキャッシュを作る。以降の各ステージが速くなる）
+      if (!partial.warmed) {
+        setProgress("準備中…　資料を読み込んでいます（1〜2分）");
+        await callStage<{ ok: boolean }>("warmup");
+        partial.warmed = true;
+      }
+
       // ① スコア案
       if (!partial.scores) {
-        setProgress("①/③ スコア案を生成中…（1〜2分）");
+        setProgress("①/④ スコア案を生成中…（1〜2分）");
         const r = await callStage<{ scores: Scores; attribute: string }>(
           "scores"
         );
@@ -189,18 +199,27 @@ export default function Home() {
           `${c.fullLabel}: ${partial.scores?.[c.key]?.normalized ?? 0}/100点`
       ).join(" / ");
 
-      // ② レポート本文
-      if (!partial.report) {
-        setProgress("②/③ レポート本文を生成中…（1〜2分）");
+      // ② レポート前半（求人票ギャップ・インタビュー）
+      if (!partial.reportMain) {
+        setProgress("②/④ 求人票ギャップ・インタビューを生成中…（1〜3分）");
         const r = await callStage<{
-          report_sections: GenerateResult["report_sections"];
-        }>("report", scoresSummary);
-        partial.report = r.report_sections;
+          report_sections: Partial<GenerateResult["report_sections"]>;
+        }>("report_main", scoresSummary);
+        partial.reportMain = r.report_sections;
       }
 
-      // ③ Wixテキスト
+      // ③ レポート後半（オフィス〜総括）
+      if (!partial.reportExtra) {
+        setProgress("③/④ オフィス〜総括を生成中…（1〜3分）");
+        const r = await callStage<{
+          report_sections: Partial<GenerateResult["report_sections"]>;
+        }>("report_extra", scoresSummary);
+        partial.reportExtra = r.report_sections;
+      }
+
+      // ④ Wixテキスト
       if (!partial.wix) {
-        setProgress("③/③ Wix掲載用テキストを生成中…");
+        setProgress("④/④ Wix掲載用テキストを生成中…（1分ほど）");
         const r = await callStage<{ wix_fields: GenerateResult["wix_fields"] }>(
           "wix",
           scoresSummary
@@ -211,7 +230,10 @@ export default function Home() {
       const result: GenerateResult = {
         scores: partial.scores!,
         attribute: partial.attribute ?? "",
-        report_sections: partial.report!,
+        report_sections: withReportDefaults({
+          ...partial.reportMain,
+          ...partial.reportExtra,
+        }),
         wix_fields: partial.wix!,
       };
       setIsDemo(false);

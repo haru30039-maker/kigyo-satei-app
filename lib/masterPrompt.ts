@@ -217,7 +217,13 @@ export const MASTER_PROMPT = MASTER_PROMPT_BODY + JSON_OUTPUT_INSTRUCTION;
 // システムプロンプト＋入力資料は3回で共通なので prompt caching が効く。
 // ============================================================
 
-export type GenerateStage = "scores" | "report" | "wix";
+export type GenerateStage =
+  | "warmup"
+  | "scores"
+  | "report"
+  | "report_main"
+  | "report_extra"
+  | "wix";
 
 // ステージ共通のシステムプロンプト（キャッシュのため3ステージで完全に同一にする）
 export const STAGED_SYSTEM_PROMPT =
@@ -263,6 +269,28 @@ const REPORT_SCHEMA = `{
   }
 }`;
 
+const REPORT_MAIN_SCHEMA = `{
+  "report_sections": {
+    "draft_note": "企業確認前ドラフトの注記1行",
+    "gap_table": [{ "job_posting": "求人票の表現", "reality": "実際の現場", "student_voice": "学生の本音" }],
+    "interviews": [{ "speaker": "話者（役職・属性の匿名表記）", "qa": [{ "q": "質問", "a": "引用（文字起こしに忠実に）", "insight": "見えたこと" }] }]
+  }
+}`;
+
+const REPORT_EXTRA_SCHEMA = `{
+  "report_sections": {
+    "office": { "rows": [{ "label": "場所/広さ/雰囲気 等", "value": "内容" }], "insight": "見えたこと" },
+    "schedule": { "roles": [{ "role": "職種名", "timeline": [{ "time": "8:30", "activity": "内容" }] }], "busy_note": "繁忙期注記", "insight": "見えたこと" },
+    "events": { "annual": [{ "month": "4月", "name": "行事名" }], "daily": "日常の様子", "quote": "社長引用", "insight": "見えたこと" },
+    "fit": { "good_fit": [{ "point": "合う人", "reason": "理由" }], "bad_fit": [{ "point": "合わない人", "reason": "理由" }] },
+    "target_persona": { "wanted_profile": "求める人材像", "persona": "ペルソナ", "traits": ["具体的特徴"] },
+    "job_posting_proposal": [{ "current": "現状", "proposal": "修正案", "effect": "見込める効果" }],
+    "improvement_proposals": [{ "title": "提案名", "issue": "現状の課題", "proposal": "改善案", "effect": "見込める効果" }],
+    "summary": "総括",
+    "missing_info": ["追加で聞くべき質問"]
+  }
+}`;
+
 const WIX_SCHEMA = `{
   "wix_fields": {
     "summary_lead": "査定サマリー4〜6行",
@@ -287,6 +315,12 @@ export function stageInstruction(
     ? `\n\n# 確定済みのスコア（この数値と整合する内容にすること）\n${scoresSummary}`
     : "";
   switch (stage) {
+    case "warmup":
+      return `---
+
+# 今回の担当パート：入力資料の確認のみ
+
+上記の資料を読み、「OK」とだけ出力すること。分析や要約は一切出力しない。`;
     case "scores":
       return `---
 
@@ -313,6 +347,30 @@ ${SCORES_SCHEMA}
 \`\`\`
 ${REPORT_SCHEMA}
 \`\`\``;
+    case "report_main":
+      return `---
+
+# 今回の担当パート：STEP 2の前半（求人票ギャップ＋インタビュー）のみ${scoresNote}
+
+- draft_note には「本レポートは企業確認前ドラフトです」の趣旨の注記を1行入れる。
+- gap_table は最大6行。
+- interviews は**最大8話者・各話者2問まで**。話者が多い場合は、経営者・管理職・現場・新入や実習生など立場が分散するよう代表的な話者を選抜する（選抜しなかった発言はスコア根拠や他セクションで活用されるため失われない）。
+
+## JSONスキーマ（この構造に厳密に従うこと）
+\`\`\`
+${REPORT_MAIN_SCHEMA}
+\`\`\``;
+    case "report_extra":
+      return `---
+
+# 今回の担当パート：STEP 2の後半（オフィス〜総括）のみ${scoresNote}
+
+- 情報不足で作れないセクションは、要素を空にせず「情報不足」と明記した上で、missing_info に追加で聞くべき質問を入れる。
+
+## JSONスキーマ（この構造に厳密に従うこと）
+\`\`\`
+${REPORT_EXTRA_SCHEMA}
+\`\`\``;
     case "wix":
       return `---
 
@@ -326,7 +384,10 @@ ${WIX_SCHEMA}
 }
 
 export const STAGE_MAX_TOKENS: Record<GenerateStage, number> = {
+  warmup: 16,
   scores: 16000,
   report: 16000,
+  report_main: 12000,
+  report_extra: 10000,
   wix: 8000,
 };
