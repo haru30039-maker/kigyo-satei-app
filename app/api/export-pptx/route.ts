@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPptx, type ExportRequest } from "@/lib/pptxBuild";
+import { buildScoreDeck } from "@/lib/scoreDeckBuild";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  let body: ExportRequest;
+  let body: ExportRequest & { kind?: "report" | "scores" };
   try {
     body = await request.json();
   } catch {
@@ -19,10 +20,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const pptx = buildPptx(body);
+    const kind = body.kind === "scores" ? "scores" : "report";
+    const pptx = kind === "scores" ? buildScoreDeck(body) : buildPptx(body);
     const buf = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 
-    const filename = `${body.companyInfo.name}_査定レポート.pptx`;
+    const filename =
+      kind === "scores"
+        ? `${body.companyInfo.name}_スコア根拠説明.pptx`
+        : `${body.companyInfo.name}_査定レポート.pptx`;
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

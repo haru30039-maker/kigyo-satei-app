@@ -333,10 +333,40 @@ export function buildPptx(
   // ========== 6. 総合評価（チャート＋スコアバー） ==========
   {
     const slide = bodySlide("総合評価（100点換算）");
-    const hasChart = !!opts.chartPath;
-    if (hasChart) {
-      slide.addImage({ path: opts.chartPath!, x: 0.55, y: 1.0, w: 4.3, h: 4.3 });
+    // 左側にレーダーチャート。画像が指定されていればそれを、なければ
+    // PPTX標準のレーダーチャートを埋め込む（Web版は画像を持たないためこちら）。
+    if (opts.chartPath) {
+      slide.addImage({ path: opts.chartPath, x: 0.55, y: 1.0, w: 4.3, h: 4.3 });
+    } else {
+      slide.addChart(
+        "radar",
+        [
+          {
+            name: "100点換算スコア",
+            labels: CATEGORIES.map((c) => c.label),
+            values: CATEGORIES.map((c) => scores[c.key]?.normalized ?? 0),
+          },
+        ],
+        {
+          x: 0.4,
+          y: 0.95,
+          w: 4.7,
+          h: 4.4,
+          radarStyle: "standard",
+          chartColors: [YELLOW],
+          showLegend: false,
+          showTitle: false,
+          catAxisLabelFontFace: FONT,
+          catAxisLabelFontSize: 10,
+          catAxisLabelColor: BLACK,
+          valAxisMaxVal: 100,
+          valAxisMinVal: 0,
+          valAxisHidden: true,
+          lineSize: 2,
+        }
+      );
     }
+    const hasChart = true;
     const x0 = hasChart ? 5.3 : 0.45;
     const labelW = hasChart ? 2.5 : 2.7;
     const barMaxW = hasChart ? 1.2 : 4.6;
