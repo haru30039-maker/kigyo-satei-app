@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import { CATEGORIES } from "./scoring";
+import { drawRadarChart } from "./radarChart";
 import type { CompanyInfo, ReportSections, Scores } from "./types";
 
 // スコア根拠説明資料（報告MTGで学生がスコアの根拠を説明するための資料）
@@ -136,28 +137,15 @@ export function buildScoreDeck(
   // ---------- 3. 総合チャート ----------
   {
     const s = bodySlide("総合スコア（100点換算）");
-    s.addChart(
-      "radar",
-      [
-        {
-          name: "100点換算スコア",
-          labels: CATEGORIES.map((c) => c.label),
-          values: CATEGORIES.map((c) => scores[c.key]?.normalized ?? 0),
-        },
-      ],
+    drawRadarChart(
+      s,
+      CATEGORIES.map((c) => ({
+        label: c.label,
+        value: scores[c.key]?.normalized ?? 0,
+      })),
       {
-        x: 0.4, y: 0.95, w: 4.7, h: 4.4,
-        radarStyle: "standard",
-        chartColors: [YELLOW],
-        showLegend: false,
-        showTitle: false,
-        catAxisLabelFontFace: FONT,
-        catAxisLabelFontSize: 10,
-        catAxisLabelColor: BLACK,
-        valAxisMaxVal: 100,
-        valAxisMinVal: 0,
-        valAxisHidden: true,
-        lineSize: 2,
+        cx: 2.7, cy: 3.1, r: 1.6,
+        accent: YELLOW, gridColor: "CCCCCC", textColor: BLACK, font: FONT,
       }
     );
     let y = 1.15;

@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 import { CATEGORIES } from "./scoring";
+import { drawRadarChart } from "./radarChart";
 import type {
   CompanyInfo,
   ReportSections,
@@ -350,31 +351,15 @@ export function buildPptx(
     if (opts.chartPath) {
       slide.addImage({ path: opts.chartPath, x: 0.55, y: 1.0, w: 4.3, h: 4.3 });
     } else {
-      slide.addChart(
-        "radar",
-        [
-          {
-            name: "100点換算スコア",
-            labels: CATEGORIES.map((c) => c.label),
-            values: CATEGORIES.map((c) => scores[c.key]?.normalized ?? 0),
-          },
-        ],
+      drawRadarChart(
+        slide,
+        CATEGORIES.map((c) => ({
+          label: c.label,
+          value: scores[c.key]?.normalized ?? 0,
+        })),
         {
-          x: 0.4,
-          y: 0.95,
-          w: 4.7,
-          h: 4.4,
-          radarStyle: "standard",
-          chartColors: [YELLOW],
-          showLegend: false,
-          showTitle: false,
-          catAxisLabelFontFace: FONT,
-          catAxisLabelFontSize: 10,
-          catAxisLabelColor: BLACK,
-          valAxisMaxVal: 100,
-          valAxisMinVal: 0,
-          valAxisHidden: true,
-          lineSize: 2,
+          cx: 2.75, cy: 3.1, r: 1.55,
+          accent: YELLOW, gridColor: "CCCCCC", textColor: BLACK, font: FONT,
         }
       );
     }
