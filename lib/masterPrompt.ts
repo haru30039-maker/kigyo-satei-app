@@ -209,3 +209,124 @@ const JSON_OUTPUT_INSTRUCTION = `
 `;
 
 export const MASTER_PROMPT = MASTER_PROMPT_BODY + JSON_OUTPUT_INSTRUCTION;
+
+// ============================================================
+// 分割生成（ステージ別）用のプロンプト
+// 大量のインタビューでも1リクエストがVercelの実行時間制限に収まるよう、
+// ①スコア案 → ②レポート → ③Wixテキスト の3回に分けて生成する。
+// システムプロンプト＋入力資料は3回で共通なので prompt caching が効く。
+// ============================================================
+
+export type GenerateStage = "scores" | "report" | "wix";
+
+// ステージ共通のシステムプロンプト（キャッシュのため3ステージで完全に同一にする）
+export const STAGED_SYSTEM_PROMPT =
+  MASTER_PROMPT_BODY +
+  `
+---
+
+## このシステムでの出力形式（最重要）
+
+このシステムでは対話形式ではなく、ユーザーメッセージ末尾で指示される担当パートのみを、
+指定されたJSONスキーマに厳密に従って出力する。
+出力は**単一のJSONオブジェクトのみ**。前置き・後書き・Markdown装飾（\`\`\`jsonフェンス等）は一切含めないこと。
+`;
+
+const SCORES_SCHEMA = `{
+  "scores": {
+    // vision(4項目) / system(5) / environment(4) / compensation(5) /
+    // relationships(5) / growth(5) / uniqueness(3) の7キー必須。項目順は評価表と同一。
+    "vision": {
+      "items": [{ "label": "評価表の項目文言", "score": 1〜5の整数, "evidence": "根拠となる発言・観察" }],
+      "subtotal": scoreの合計(整数), "max": 満点(整数), "normalized": 100点換算(整数)
+    },
+    "system": {…}, "environment": {…}, "compensation": {…},
+    "relationships": {…}, "growth": {…}, "uniqueness": {…}
+  },
+  "attribute": "火属性・水属性・風属性・土属性 のいずれか。判定根拠：【火属性】ビジョンの強さ＆独自性が高い（85以上）かつ成長機会が豊か。【水属性】人間関係の密度が高い（80以上）かつ仕組みが充実。【風属性】仕組みの充実度が相対的に低い（60未満）がビジョンは強い（75以上）。【土属性】給与・休日・環境が高い（各75以上）。複数該当する場合は最も該当度が高いものを選択。"
+}`;
+
+const REPORT_SCHEMA = `{
+  "report_sections": {
+    "draft_note": "企業確認前ドラフトの注記1行",
+    "gap_table": [{ "job_posting": "求人票の表現", "reality": "実際の現場", "student_voice": "学生の本音" }],
+    "interviews": [{ "speaker": "話者（役職・属性の匿名表記）", "qa": [{ "q": "質問", "a": "引用（文字起こしに忠実に）", "insight": "見えたこと" }] }],
+    "office": { "rows": [{ "label": "場所/広さ/雰囲気 等", "value": "内容" }], "insight": "見えたこと" },
+    "schedule": { "roles": [{ "role": "職種名", "timeline": [{ "time": "8:30", "activity": "内容" }] }], "busy_note": "繁忙期注記", "insight": "見えたこと" },
+    "events": { "annual": [{ "month": "4月", "name": "行事名" }], "daily": "日常の様子", "quote": "社長引用", "insight": "見えたこと" },
+    "fit": { "good_fit": [{ "point": "合う人", "reason": "理由" }], "bad_fit": [{ "point": "合わない人", "reason": "理由" }] },
+    "target_persona": { "wanted_profile": "求める人材像", "persona": "ペルソナ", "traits": ["具体的特徴"] },
+    "job_posting_proposal": [{ "current": "現状", "proposal": "修正案", "effect": "見込める効果" }],
+    "improvement_proposals": [{ "title": "提案名", "issue": "現状の課題", "proposal": "改善案", "effect": "見込める効果" }],
+    "summary": "総括",
+    "missing_info": ["追加で聞くべき質問"]
+  }
+}`;
+
+const WIX_SCHEMA = `{
+  "wix_fields": {
+    "summary_lead": "査定サマリー4〜6行",
+    "founder_quote": { "text": "代表の言葉", "name_title": "役職・氏名" },
+    "insight_cards": [{ "title": "テーマ見出し", "body": "本文3〜5文" }],   // 4件
+    "interviewee_tags": ["社長", "入社◯年目社員"],
+    "real_voice_note": "Real Voice紹介文",
+    "numbers_cards": [{ "label": "項目名", "number": "大きく見せる数字", "note": "解説3〜4文" }],  // 4件
+    "chart_tabs": [{ "tab": "評価制度/裁量/給与・福利厚生/残業・休日/人間関係", "body": "実態の解説", "fit_line": "合う・おすすめ1行", "mismatch_line": "合わない1行" }],  // 5件
+    "office_captions": ["写真キャプション"],  // 5件
+    "fits_tags": ["刺さる人タグ"],       // 8件
+    "mismatch_tags": ["合わない人タグ"]  // 8件
+  }
+}`;
+
+/** ステージ別の指示文（ユーザーメッセージ末尾に付ける。キャッシュ対象の共通部分の後ろに置くこと） */
+export function stageInstruction(
+  stage: GenerateStage,
+  scoresSummary?: string
+): string {
+  const scoresNote = scoresSummary
+    ? `\n\n# 確定済みのスコア（この数値と整合する内容にすること）\n${scoresSummary}`
+    : "";
+  switch (stage) {
+    case "scores":
+      return `---
+
+# 今回の担当パート：STEP 1（評価スコア案）のみ
+
+- スコアは31項目すべてについて score（1〜5の整数）と evidence（根拠となる発言・観察。根拠がない場合は「根拠なし→3点仮置き」と明記し確認質問を添える）を出す。
+- subtotal はカテゴリ内の score 合計、normalized は 100点換算（整数に四捨五入）。
+- 評価表の既存スコアが入力に含まれる場合はそれを正とし、evidence には文字起こしからの裏付けを添える。
+
+## JSONスキーマ（この構造に厳密に従うこと）
+\`\`\`
+${SCORES_SCHEMA}
+\`\`\``;
+    case "report":
+      return `---
+
+# 今回の担当パート：STEP 2（査定レポート本文）のみ${scoresNote}
+
+- report_sections はレポートの各ページに対応するテキストを入れる（PPTXの生成はシステム側で行う）。
+- draft_note には「本レポートは企業確認前ドラフトです」の趣旨の注記を1行入れる。
+- 情報不足で作れないセクションは、要素を空にせず「情報不足」と明記した上で、missing_info に追加で聞くべき質問を入れる。
+
+## JSONスキーマ（この構造に厳密に従うこと）
+\`\`\`
+${REPORT_SCHEMA}
+\`\`\``;
+    case "wix":
+      return `---
+
+# 今回の担当パート：STEP 3（Wixサイト掲載用テキスト）のみ${scoresNote}
+
+## JSONスキーマ（この構造に厳密に従うこと）
+\`\`\`
+${WIX_SCHEMA}
+\`\`\``;
+  }
+}
+
+export const STAGE_MAX_TOKENS: Record<GenerateStage, number> = {
+  scores: 16000,
+  report: 16000,
+  wix: 8000,
+};

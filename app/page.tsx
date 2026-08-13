@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CATEGORIES, type CategoryKey } from "@/lib/scoring";
 import type {
   CompanyInfo,
@@ -44,6 +44,7 @@ export default function Home() {
   const [model, setModel] = useState(MODELS[0].id);
 
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [isDemo, setIsDemo] = useState(false);
@@ -61,6 +62,15 @@ export default function Home() {
   function updateScores(next: Scores) {
     setResult((prev) => (prev ? { ...prev, scores: next } : prev));
   }
+
+  // 分割生成の途中結果（リトライ時に完了済みステージを再利用する）
+  const partialRef = useRef<{
+    key: string;
+    scores?: Scores;
+    attribute?: string;
+    report?: GenerateResult["report_sections"];
+    wix?: GenerateResult["wix_fields"];
+  } | null>(null);
 
   async function generate() {
     setError(null);
@@ -112,40 +122,98 @@ export default function Home() {
         }
       }
 
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyInfo: company,
-          transcript,
-          existingScores,
-          jobPosting,
-          visitNotes,
-          model,
-        }),
-      });
+      const base = {
+        companyInfo: company,
+        transcript,
+        existingScores,
+        jobPosting,
+        visitNotes,
+        model,
+      };
+
+      // 入力が変わっていたら途中結果を破棄（同一入力ならリトライ時に再利用）
+      const inputKey = JSON.stringify([
+        company,
+        transcriptFiles.map((f) => `${f.name}:${f.size}`),
+        jobPosting.length,
+        visitNotes.length,
+        model,
+      ]);
+      if (partialRef.current?.key !== inputKey) {
+        partialRef.current = { key: inputKey };
+      }
+      const partial = partialRef.current;
 
       // サーバー基盤(Vercel等)がタイムアウトすると JSON でないエラーページが返ることが
       // あるため、無条件に res.json() せずテキストで受けて自前でパースする。
-      const raw = await res.text();
-      let data: { error?: string } & Partial<GenerateResult> = {};
-      let isJson = true;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        isJson = false;
-      }
-      if (!res.ok || !isJson) {
-        if (res.status === 401) {
-          throw new Error("セッションが切れています。再ログインしてください。");
+      async function callStage<T>(
+        stage: "scores" | "report" | "wix",
+        scoresSummary?: string
+      ): Promise<T> {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...base, stage, scoresSummary }),
+        });
+        const raw = await res.text();
+        let data: { error?: string } = {};
+        let isJson = true;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          isJson = false;
         }
-        throw new Error(
-          data?.error ??
-            `サーバーエラー (HTTP ${res.status})。生成に時間がかかりすぎてタイムアウトした可能性があります。時間をおいて再試行するか、文字起こしファイルを分けて生成してください。`
-        );
+        if (!res.ok || !isJson) {
+          if (res.status === 401) {
+            throw new Error("セッションが切れています。再ログインしてください。");
+          }
+          throw new Error(
+            data?.error ??
+              `サーバーエラー (HTTP ${res.status})。時間をおいて「リトライ」を押すと、失敗したところから再開します。`
+          );
+        }
+        return data as T;
       }
 
-      const result = data as GenerateResult;
+      // ① スコア案
+      if (!partial.scores) {
+        setProgress("①/③ スコア案を生成中…（1〜2分）");
+        const r = await callStage<{ scores: Scores; attribute: string }>(
+          "scores"
+        );
+        partial.scores = r.scores;
+        partial.attribute = r.attribute;
+      }
+      const scoresSummary = CATEGORIES.map(
+        (c) =>
+          `${c.fullLabel}: ${partial.scores?.[c.key]?.normalized ?? 0}/100点`
+      ).join(" / ");
+
+      // ② レポート本文
+      if (!partial.report) {
+        setProgress("②/③ レポート本文を生成中…（1〜2分）");
+        const r = await callStage<{
+          report_sections: GenerateResult["report_sections"];
+        }>("report", scoresSummary);
+        partial.report = r.report_sections;
+      }
+
+      // ③ Wixテキスト
+      if (!partial.wix) {
+        setProgress("③/③ Wix掲載用テキストを生成中…");
+        const r = await callStage<{ wix_fields: GenerateResult["wix_fields"] }>(
+          "wix",
+          scoresSummary
+        );
+        partial.wix = r.wix_fields;
+      }
+
+      const result: GenerateResult = {
+        scores: partial.scores!,
+        attribute: partial.attribute ?? "",
+        report_sections: partial.report!,
+        wix_fields: partial.wix!,
+      };
       setIsDemo(false);
       setResult(result);
       // 生成結果の属性で企業情報を更新
@@ -157,6 +225,7 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "生成に失敗しました");
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -317,11 +386,11 @@ export default function Home() {
           disabled={loading}
           className="px-8 py-3 rounded-lg bg-gray-900 text-yellow-400 font-bold text-lg hover:bg-gray-700 disabled:opacity-50"
         >
-          {loading ? "生成中…（1〜3分かかります）" : "生成する"}
+          {loading ? "生成中…" : "生成する"}
         </button>
         {loading && (
           <span className="text-sm text-gray-500 animate-pulse">
-            スコア案・レポート・Wixテキストをまとめて生成しています…
+            {progress ?? "生成しています…"}
           </span>
         )}
         {error && (

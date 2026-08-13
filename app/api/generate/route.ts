@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { MASTER_PROMPT } from "@/lib/masterPrompt";
+import {
+  MASTER_PROMPT,
+  STAGED_SYSTEM_PROMPT,
+  STAGE_MAX_TOKENS,
+  stageInstruction,
+  type GenerateStage,
+} from "@/lib/masterPrompt";
 import { CATEGORIES } from "@/lib/scoring";
 import type { GenerateRequest } from "@/lib/types";
 
@@ -116,18 +122,55 @@ export async function POST(request: NextRequest) {
     //     マスタープロンプト末尾の「JSONのみ返す」指示＋パースで対応している。
     // ストリーミングで受信し完了までまとめる（非ストリーミングの長時間リクエスト制限と
     // 接続アイドルタイムアウトを回避。インタビューが多い案件は生成が数分かかる）。
-    const stream = client.messages.stream({
-      model,
-      max_tokens: 32000,
-      system: [
-        {
-          type: "text",
-          text: MASTER_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [{ role: "user", content: userContent }],
-    });
+    // 分割生成: stage 指定時はそのパートのみ生成する。
+    // システムプロンプト＋入力資料（userContent）は3ステージで同一なので、
+    // cache_control を userContent 側に付けることで2回目以降はキャッシュが効く。
+    const stage = (["scores", "report", "wix"] as const).includes(
+      body.stage as GenerateStage
+    )
+      ? (body.stage as GenerateStage)
+      : null;
+
+    const stream = stage
+      ? client.messages.stream({
+          model,
+          max_tokens: STAGE_MAX_TOKENS[stage],
+          system: [
+            {
+              type: "text",
+              text: STAGED_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: userContent,
+                  cache_control: { type: "ephemeral" },
+                },
+                {
+                  type: "text",
+                  text: stageInstruction(stage, body.scoresSummary),
+                },
+              ],
+            },
+          ],
+        })
+      : client.messages.stream({
+          model,
+          max_tokens: 32000,
+          system: [
+            {
+              type: "text",
+              text: MASTER_PROMPT,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [{ role: "user", content: userContent }],
+        });
     const response = await stream.finalMessage();
 
     if (response.stop_reason === "refusal") {
@@ -168,6 +211,7 @@ export async function POST(request: NextRequest) {
     console.log(
       JSON.stringify({
         route: "generate",
+        stage: body.stage ?? "all",
         model,
         input_chars: userContent.length,
         duration_ms: Date.now() - started,

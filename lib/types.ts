@@ -114,4 +114,8 @@ export interface GenerateRequest {
   jobPosting: string;
   visitNotes: string;
   model: string;
+  /** 分割生成のステージ。省略時は全パートを1回で生成（レガシー） */
+  stage?: "scores" | "report" | "wix";
+  /** report/wix ステージに渡す、確定済みスコアの要約文字列 */
+  scoresSummary?: string;
 }
