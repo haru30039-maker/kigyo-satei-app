@@ -71,6 +71,16 @@ export function buildPptx(
     return slide;
   }
 
+  // 生成側が「」を付けてくる場合があるため、二重にならないよう正規化する
+  function quoted(text: string): string {
+    const t = String(text ?? "")
+      .trim()
+      .replace(/^[「『”"]+/, "")
+      .replace(/[」』”"]+$/, "")
+      .trim();
+    return `「${t}」`;
+  }
+
   function insightBox(
     slide: PptxGenJS.Slide,
     text: string,
@@ -444,7 +454,7 @@ export function buildPptx(
           fill: { color: WHITE },
           line: { color: YELLOW, width: 2.5 },
         });
-        slide.addText(`「${qa.a}」`, {
+        slide.addText(quoted(qa.a), {
           x: 0.6,
           y: y + 0.38,
           w: PAGE_W - 1.2,
@@ -608,9 +618,7 @@ export function buildPptx(
         line: { color: YELLOW, width: 2.5 },
       });
       slide.addText(
-        report.events.quote.trim().startsWith("「")
-          ? report.events.quote.trim()
-          : `「${report.events.quote.trim()}」`,
+        quoted(report.events.quote),
         {
         x: 5.25,
         y: 2.7,
