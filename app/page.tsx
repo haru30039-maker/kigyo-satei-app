@@ -379,17 +379,6 @@ export default function Home() {
               onChange={(e) => setField("employees", e.target.value)}
               placeholder="45名" />
           </div>
-          <div className="col-span-2">
-            <label className={labelCls}>属性</label>
-            <select className={inputCls} value={company.attribute}
-              onChange={(e) => setField("attribute", e.target.value)}>
-              <option value="">選択してください</option>
-              <option value="火属性">火属性</option>
-              <option value="水属性">水属性</option>
-              <option value="風属性">風属性</option>
-              <option value="土属性">土属性</option>
-            </select>
-          </div>
         </div>
 
         <div className="mt-5">
@@ -611,6 +600,28 @@ export default function Home() {
           このままダウンロード・提出しないでください。
         </div>
       )}
+      {result && !isDemo && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3">
+          <span className="text-xs font-bold text-gray-600">
+            属性（スコアからAIが判定）
+          </span>
+          <select
+            className="border border-gray-300 rounded px-3 py-2 text-sm bg-white font-bold"
+            value={company.attribute}
+            onChange={(e) => setField("attribute", e.target.value)}
+          >
+            <option value="">未判定</option>
+            <option value="火属性">火属性</option>
+            <option value="水属性">水属性</option>
+            <option value="風属性">風属性</option>
+            <option value="土属性">土属性</option>
+          </select>
+          <span className="text-xs text-gray-500">
+            チームの判断で変えたい場合はここで変更できます（Wix掲載用テキストに反映されます）。
+          </span>
+        </div>
+      )}
+
       {result && (
         <section>
           <div className="flex border-b border-gray-300 mb-5">
