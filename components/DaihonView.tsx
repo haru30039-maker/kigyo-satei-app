@@ -5,12 +5,22 @@ import type { DaihonResult } from "@/lib/daihon";
 // 報告MTG台本のモバイル向け表示（/daihon プレビューと /daihon/view 共用）
 
 export default function DaihonView({ daihon }: { daihon: DaihonResult }) {
+  // 合計時間は各セクションの合計から計算する。
+  // 生成側の duration_note とセクション合計が食い違うことがあるため、
+  // 実際に読み上げる時間の根拠になるセクション側を正とする。
+  const totalMinutes = daihon.sections.reduce(
+    (sum, s) => sum + (Number(s.minutes) || 0),
+    0
+  );
+  const durationLabel =
+    totalMinutes > 0 ? `説明 約${totalMinutes}分＋質疑` : daihon.duration_note;
+
   return (
     <div className="mx-auto max-w-xl px-4 pb-16 text-[16px] leading-[1.9]">
       {/* 固定ヘッダー */}
       <header className="sticky top-0 z-10 -mx-4 border-b border-gray-200 bg-white/95 px-4 pb-2 pt-3 backdrop-blur">
         <h1 className="text-base font-bold">{daihon.title}</h1>
-        <p className="mt-0.5 text-xs text-gray-500">{daihon.duration_note}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{durationLabel}</p>
         <nav className="scrollbar-none -mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1">
           {daihon.sections.map((s) => (
             <a
