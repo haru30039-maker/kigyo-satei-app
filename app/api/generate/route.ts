@@ -24,10 +24,26 @@ const DEFAULT_MODEL = "claude-sonnet-4-6";
 // ログには文字数・処理時間・トークン数などのメタ情報のみを出力し、本文は一切出力しない。
 
 function buildUserContent(req: GenerateRequest): string {
-  const { companyInfo, transcript, existingScores, jobPosting, visitNotes } =
-    req;
+  const {
+    companyInfo,
+    transcript,
+    existingScores,
+    studentScores,
+    jobPosting,
+    visitNotes,
+  } = req;
 
   const parts: string[] = [];
+
+  // 日程ごとに参加メンバーが違うため、分かる場合は明細も渡す
+  const visitDetail =
+    companyInfo.visits && companyInfo.visits.length > 0
+      ? "\n訪問日程の内訳:\n" +
+        companyInfo.visits
+          .filter((v) => v.date || v.members)
+          .map((v) => `  - ${v.date || "日付未入力"}：${v.members || "参加者未入力"}`)
+          .join("\n")
+      : "";
 
   parts.push(`# 企業基本情報
 企業名: ${companyInfo.name}
@@ -36,7 +52,7 @@ function buildUserContent(req: GenerateRequest): string {
 従業員数: ${companyInfo.employees}
 訪問日: ${companyInfo.visitDate}
 調査者: ${companyInfo.researchers}
-属性: ${companyInfo.attribute}`);
+属性: ${companyInfo.attribute}${visitDetail}`);
 
   if (existingScores && Object.keys(existingScores).length > 0) {
     const lines: string[] = [];
@@ -56,6 +72,36 @@ function buildUserContent(req: GenerateRequest): string {
     if (lines.length > 0) {
       parts.push(
         `# 評価表の既存スコア（入力済み。これを正とする）\n${lines.join("\n")}`
+      );
+    }
+  }
+
+  if (studentScores && studentScores.length > 0) {
+    const lines: string[] = [];
+    for (const sheet of studentScores) {
+      const catLines: string[] = [];
+      for (const cat of CATEGORIES) {
+        const vals = sheet.scores[cat.key];
+        if (!vals || vals.every((v) => v == null)) continue;
+        catLines.push(
+          `  ${cat.fullLabel}: ` +
+            cat.items
+              .map((item, i) =>
+                vals[i] != null ? `「${item}」=${vals[i]}点` : `「${item}」=未入力`
+              )
+              .join(" / ")
+        );
+      }
+      if (catLines.length > 0) {
+        lines.push(`## ${sheet.name} の採点\n${catLines.join("\n")}`);
+      }
+    }
+    if (lines.length > 0) {
+      parts.push(
+        `# 学生それぞれの採点（調査に参加した学生が個別に付けたスコア）\n` +
+          `同じ項目でも学生によって点数が割れることがある。これは重要な判断材料なので、\n` +
+          `平均を機械的に取るのではなく、文字起こし・見学メモの根拠と照らして総合的に判定すること。\n\n` +
+          lines.join("\n\n")
       );
     }
   }
@@ -112,6 +158,16 @@ export async function POST(request: NextRequest) {
   const model = ALLOWED_MODELS.includes(body.model) ? body.model : DEFAULT_MODEL;
   const userContent = buildUserContent(body);
 
+  // 求人票のスクリーンショットや手書きメモの写真をClaudeに渡す
+  const imageBlocks = (body.images ?? []).slice(0, 20).map((img) => ({
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: img.media_type as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+      data: img.data,
+    },
+  }));
+
   const client = new Anthropic(); // ANTHROPIC_API_KEY はサーバー側の環境変数から
 
   try {
@@ -153,6 +209,7 @@ export async function POST(request: NextRequest) {
             {
               role: "user",
               content: [
+                ...imageBlocks,
                 {
                   type: "text",
                   text: userContent,
@@ -176,7 +233,15 @@ export async function POST(request: NextRequest) {
               cache_control: { type: "ephemeral" },
             },
           ],
-          messages: [{ role: "user", content: userContent }],
+          messages: [
+            {
+              role: "user",
+              content: [
+                ...imageBlocks,
+                { type: "text" as const, text: userContent },
+              ],
+            },
+          ],
         });
     const response = await stream.finalMessage();
 
@@ -238,6 +303,7 @@ export async function POST(request: NextRequest) {
         stage: body.stage ?? "all",
         model,
         input_chars: userContent.length,
+        images: imageBlocks.length,
         duration_ms: Date.now() - started,
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,

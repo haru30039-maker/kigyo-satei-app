@@ -7,11 +7,15 @@ import { CATEGORIES, type CategoryKey } from "@/lib/scoring";
 import type {
   CompanyInfo,
   GenerateResult,
+  ImagePart,
   Scores,
+  StudentScoreSheet,
+  VisitDay,
 } from "@/lib/types";
 import { withReportDefaults } from "@/lib/types";
 import { parseScoreXlsx } from "@/lib/xlsxParse";
 import { extractTextFromPdf } from "@/lib/pdfExtract";
+import { extractFiles } from "@/lib/fileExtract";
 import ScoreTable from "@/components/ScoreTable";
 import ReportPreview from "@/components/ReportPreview";
 import WixText from "@/components/WixText";
@@ -39,9 +43,14 @@ type Tab = "score" | "report" | "wix" | "chart";
 export default function Home() {
   const [company, setCompany] = useState<CompanyInfo>(EMPTY_COMPANY);
   const [transcriptFiles, setTranscriptFiles] = useState<File[]>([]);
-  const [xlsxFile, setXlsxFile] = useState<File | null>(null);
+  const [xlsxFiles, setXlsxFiles] = useState<File[]>([]);
   const [jobPosting, setJobPosting] = useState("");
   const [visitNotes, setVisitNotes] = useState("");
+  // 訪問は複数日にわたり、日によって参加メンバーも違う
+  const [visits, setVisits] = useState<VisitDay[]>([{ date: "", members: "" }]);
+  // 学生メモ・求人票は Word/PDF/画像でも提出されるためファイルでも受け取る
+  const [notesFiles, setNotesFiles] = useState<File[]>([]);
+  const [jobFiles, setJobFiles] = useState<File[]>([]);
   const [model, setModel] = useState(MODELS[0].id);
 
   const [loading, setLoading] = useState(false);
@@ -58,6 +67,18 @@ export default function Home() {
 
   function setField(key: keyof CompanyInfo, value: string) {
     setCompany((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateVisit(i: number, key: keyof VisitDay, value: string) {
+    setVisits((prev) =>
+      prev.map((v, idx) => (idx === i ? { ...v, [key]: value } : v))
+    );
+  }
+  function addVisit() {
+    setVisits((prev) => [...prev, { date: "", members: "" }]);
+  }
+  function removeVisit(i: number) {
+    setVisits((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i)));
   }
 
   function updateScores(next: Scores) {
@@ -107,37 +128,80 @@ export default function Home() {
       );
       const transcript = texts.join("\n\n");
 
-      // 評価表 xlsx から既存スコアを抽出（任意・ベストエフォート）
-      let existingScores: Partial<Record<CategoryKey, number[]>> | null = null;
-      if (xlsxFile) {
+      // 学生メモ・求人票のファイル（Word/PDF/画像）を読み取る
+      const noteParts = await extractFiles(notesFiles, "学生メモ");
+      const jobParts = await extractFiles(jobFiles, "求人票・企業HP");
+      const images: ImagePart[] = [...noteParts.images, ...jobParts.images];
+      const visitNotesAll = [visitNotes.trim(), noteParts.text]
+        .filter(Boolean)
+        .join("\n\n");
+      const jobPostingAll = [jobPosting.trim(), jobParts.text]
+        .filter(Boolean)
+        .join("\n\n");
+
+      // 評価表 xlsx（学生1人＝1ファイル）。ファイル名を学生名として扱う
+      const studentScores: StudentScoreSheet[] = [];
+      for (const f of xlsxFiles) {
         try {
-          const parsed = await parseScoreXlsx(xlsxFile);
-          existingScores = {};
+          const parsed = await parseScoreXlsx(f);
+          const scores: StudentScoreSheet["scores"] = {};
           for (const [k, v] of Object.entries(parsed)) {
             if (v && v.some((x) => x != null)) {
-              existingScores[k as CategoryKey] = v.map((x) => x ?? 0);
+              scores[k as CategoryKey] = v;
             }
           }
-          if (Object.keys(existingScores).length === 0) existingScores = null;
+          if (Object.keys(scores).length > 0) {
+            studentScores.push({
+              name: f.name.replace(/\.[^.]+$/, ""),
+              scores,
+            });
+          }
         } catch {
-          // 読み取り失敗時は既存スコアなしとして続行
-          existingScores = null;
+          // 読み取れないファイルは無視して続行
         }
       }
 
+      // 訪問日程から表示用の日付・調査者を組み立てる
+      const activeVisits = visits.filter((v) => v.date || v.members.trim());
+      const visitDate = activeVisits
+        .map((v) => v.date.replace(/-/g, "/"))
+        .filter(Boolean)
+        .join("・");
+      const researchers = Array.from(
+        new Set(
+          activeVisits.flatMap((v) =>
+            v.members
+              .split(/[,、\/／・]/)
+              .map((x) => x.trim())
+              .filter(Boolean)
+          )
+        )
+      ).join("、");
+      const companyInfo: CompanyInfo = {
+        ...company,
+        visitDate: visitDate || company.visitDate,
+        researchers: researchers || company.researchers,
+        visits: activeVisits,
+      };
+
       const base = {
-        companyInfo: company,
+        companyInfo,
         transcript,
-        existingScores,
-        jobPosting,
-        visitNotes,
+        existingScores: null,
+        studentScores,
+        jobPosting: jobPostingAll,
+        visitNotes: visitNotesAll,
+        images,
         model,
       };
 
       // 入力が変わっていたら途中結果を破棄（同一入力ならリトライ時に再利用）
       const inputKey = JSON.stringify([
-        company,
+        companyInfo,
         transcriptFiles.map((f) => `${f.name}:${f.size}`),
+        notesFiles.map((f) => `${f.name}:${f.size}`),
+        jobFiles.map((f) => `${f.name}:${f.size}`),
+        xlsxFiles.map((f) => `${f.name}:${f.size}`),
         jobPosting.length,
         visitNotes.length,
         model,
@@ -315,18 +379,7 @@ export default function Home() {
               onChange={(e) => setField("employees", e.target.value)}
               placeholder="45名" />
           </div>
-          <div>
-            <label className={labelCls}>訪問日</label>
-            <input className={inputCls} type="date" value={company.visitDate}
-              onChange={(e) => setField("visitDate", e.target.value)} />
-          </div>
-          <div>
-            <label className={labelCls}>調査者</label>
-            <input className={inputCls} value={company.researchers}
-              onChange={(e) => setField("researchers", e.target.value)}
-              placeholder="山田・佐藤" />
-          </div>
-          <div>
+          <div className="col-span-2">
             <label className={labelCls}>属性</label>
             <select className={inputCls} value={company.attribute}
               onChange={(e) => setField("attribute", e.target.value)}>
@@ -337,6 +390,49 @@ export default function Home() {
               <option value="土属性">土属性</option>
             </select>
           </div>
+        </div>
+
+        <div className="mt-5">
+          <label className={labelCls}>
+            訪問日程（複数日可・日付ごとに参加メンバーを入力）
+          </label>
+          <div className="space-y-2">
+            {visits.map((v, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  type="date"
+                  className={`${inputCls} w-44 shrink-0`}
+                  value={v.date}
+                  onChange={(e) => updateVisit(i, "date", e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  value={v.members}
+                  placeholder="この日の参加メンバー（例：沖田、赤松、井上）"
+                  onChange={(e) => updateVisit(i, "members", e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeVisit(i)}
+                  disabled={visits.length <= 1}
+                  className="px-2 py-2 text-gray-400 hover:text-red-600 disabled:opacity-30"
+                  aria-label="この日程を削除"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addVisit}
+            className="mt-2 text-xs font-bold text-gray-700 underline"
+          >
+            ＋ 訪問日を追加
+          </button>
+          <p className="text-xs text-gray-500 mt-1">
+            レポートには全日程の日付と、参加した全メンバー（重複なし）が載ります。
+          </p>
         </div>
       </section>
 
@@ -363,26 +459,80 @@ export default function Home() {
             )}
           </div>
           <div>
-            <label className={labelCls}>評価表 .xlsx（任意・入力済みならそれを正とする）</label>
+            <label className={labelCls}>
+              評価表 .xlsx（任意・複数可／学生1人につき1ファイル）
+            </label>
             <input
               type="file"
               accept=".xlsx"
+              multiple
               className="text-sm"
-              onChange={(e) => setXlsxFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => setXlsxFiles(Array.from(e.target.files ?? []))}
             />
+            <p className="text-xs text-gray-500 mt-1">
+              ファイル名を学生名として扱います（例：沖田_3年.xlsx）。
+              複数人分あると、AIが各自の採点のばらつきも踏まえて総合判定案を出します。
+            </p>
+            {xlsxFiles.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {xlsxFiles.map((f) => f.name).join(" / ")}
+              </p>
+            )}
           </div>
+          <div>
+            <label className={labelCls}>
+              学生メモ（任意・複数可／.docx .pdf .txt / 写真・スクショ）
+            </label>
+            <input
+              type="file"
+              accept=".docx,.pdf,.txt,.md,image/*"
+              multiple
+              className="text-sm"
+              onChange={(e) => setNotesFiles(Array.from(e.target.files ?? []))}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              参加した学生の人数分アップロードできます。ファイル名は「氏名_学年」推奨（例：井上_2年.docx）。
+            </p>
+            {notesFiles.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {notesFiles.map((f) => f.name).join(" / ")}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className={labelCls}>
+              求人票・企業HP（任意・複数可／.pdf .docx / スクリーンショット・画像）
+            </label>
+            <input
+              type="file"
+              accept=".docx,.pdf,.txt,.md,image/*"
+              multiple
+              className="text-sm"
+              onChange={(e) => setJobFiles(Array.from(e.target.files ?? []))}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              求人サイトやHPのスクリーンショットでも読み取れます。
+            </p>
+            {jobFiles.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {jobFiles.map((f) => f.name).join(" / ")}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>求人票・企業HPの記載内容（任意）</label>
-              <textarea className={`${inputCls} h-28`} value={jobPosting}
+              <label className={labelCls}>求人票・企業HP（テキストで貼る場合）</label>
+              <textarea className={`${inputCls} h-24`} value={jobPosting}
                 onChange={(e) => setJobPosting(e.target.value)}
-                placeholder="求人票のテキストを貼り付け" />
+                placeholder="求人票のテキストを貼り付け（上のファイルと併用可）" />
             </div>
             <div>
-              <label className={labelCls}>見学メモ（任意）</label>
-              <textarea className={`${inputCls} h-28`} value={visitNotes}
+              <label className={labelCls}>見学メモ（テキストで貼る場合）</label>
+              <textarea className={`${inputCls} h-24`} value={visitNotes}
                 onChange={(e) => setVisitNotes(e.target.value)}
-                placeholder="オフィスの様子・タイムスタンプ＋印象メモ" />
+                placeholder="オフィスの様子・印象メモ（上のファイルと併用可）" />
             </div>
           </div>
           <div className="flex items-center gap-3">

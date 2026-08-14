@@ -1,13 +1,36 @@
 import type { CategoryKey } from "./scoring";
 
+/** 訪問1日分の日程と、その日に参加したメンバー */
+export interface VisitDay {
+  date: string; // YYYY-MM-DD
+  members: string; // 「沖田、赤松、井上」のようにカンマ区切り
+}
+
 export interface CompanyInfo {
   name: string;
   industry: string;
   location: string;
   employees: string;
+  /** 表示用にまとめた訪問日（例：2026/06/24・2026/07/30） */
   visitDate: string;
+  /** 表示用にまとめた調査者（全日程の重複なし一覧） */
   researchers: string;
   attribute: string; // 火属性/水属性/風属性 など
+  /** 日程ごとの詳細（日によって参加メンバーが違うため） */
+  visits?: VisitDay[];
+}
+
+/** Claudeに渡す画像（求人票のスクリーンショット、手書きメモの写真など） */
+export interface ImagePart {
+  name: string;
+  media_type: string;
+  data: string; // base64
+}
+
+/** 学生1人分の採点（評価表xlsx 1ファイル＝1人） */
+export interface StudentScoreSheet {
+  name: string; // ファイル名から取った学生名
+  scores: Partial<Record<CategoryKey, (number | null)[]>>;
 }
 
 export interface ScoreItem {
@@ -117,6 +140,10 @@ export interface GenerateRequest {
   jobPosting: string;
   visitNotes: string;
   model: string;
+  /** 求人票のスクリーンショットや手書きメモの写真など */
+  images?: ImagePart[];
+  /** 学生ごとの採点。AIはこれと全体情報から総合判定案を出す */
+  studentScores?: StudentScoreSheet[];
   /** 分割生成のステージ。省略時は全パートを1回で生成（レガシー） */
   stage?: "scores" | "report" | "wix";
   /** report/wix ステージに渡す、確定済みスコアの要約文字列 */
