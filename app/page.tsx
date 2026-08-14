@@ -398,19 +398,32 @@ export default function Home() {
           </label>
           <div className="space-y-2">
             {visits.map((v, i) => (
-              <div key={i} className="flex gap-2 items-center">
-                <input
-                  type="date"
-                  className={`${inputCls} w-44 shrink-0`}
-                  value={v.date}
-                  onChange={(e) => updateVisit(i, "date", e.target.value)}
-                />
-                <input
-                  className={inputCls}
-                  value={v.members}
-                  placeholder="この日の参加メンバー（例：沖田、赤松、井上）"
-                  onChange={(e) => updateVisit(i, "members", e.target.value)}
-                />
+              <div key={i} className="flex flex-wrap gap-2 items-end">
+                <div className="shrink-0">
+                  {i === 0 && (
+                    <span className="block text-[11px] text-gray-500 mb-0.5">日付</span>
+                  )}
+                  {/* inputCls の w-full が効くと日付欄が幅を占有するため個別指定 */}
+                  <input
+                    type="date"
+                    className="w-44 border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    value={v.date}
+                    onChange={(e) => updateVisit(i, "date", e.target.value)}
+                  />
+                </div>
+                <div className="flex-1 min-w-[18rem]">
+                  {i === 0 && (
+                    <span className="block text-[11px] text-gray-500 mb-0.5">
+                      この日の参加メンバー
+                    </span>
+                  )}
+                  <input
+                    className={inputCls}
+                    value={v.members}
+                    placeholder="例：沖田、赤松、井上"
+                    onChange={(e) => updateVisit(i, "members", e.target.value)}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => removeVisit(i)}
