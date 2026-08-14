@@ -88,7 +88,11 @@ export default function DaihonPage() {
           スマホ用の専用URLを発行できます（台本はサーバーに保存されません）。
           レポートを編集し直したら、もう一度アップロードすれば台本も作り直せます。
         </p>
-        <a href="/" className="mt-1 inline-block text-xs text-gray-400 underline">
+        <p className="mt-2 rounded border border-red-600 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+          必ず「匿名版」をアップロードしてください。台本は社長の前で読み上げるものです。
+          実名版を使うと、匿名をお約束した協力者の名前がセリフに混ざる恐れがあります。
+        </p>
+        <a href="/" className="mt-2 inline-block text-xs text-gray-400 underline">
           ← レポート生成に戻る
         </a>
       </header>
@@ -96,7 +100,9 @@ export default function DaihonPage() {
       <section className="mb-6 rounded-lg border border-gray-300 p-5">
         <div className="space-y-4">
           <div>
-            <label className={labelCls}>査定レポート（.pptx） *</label>
+            <label className={labelCls}>
+              査定レポート（.pptx・<span className="text-red-700">匿名版</span>） *
+            </label>
             <input
               type="file"
               accept=".pptx"
@@ -105,7 +111,10 @@ export default function DaihonPage() {
             />
           </div>
           <div>
-            <label className={labelCls}>スコア根拠説明資料（.pptx・任意）</label>
+            <label className={labelCls}>
+              スコア根拠説明資料（.pptx・任意・
+              <span className="text-red-700">匿名版</span>）
+            </label>
             <input
               type="file"
               accept=".pptx"
