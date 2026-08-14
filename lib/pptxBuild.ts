@@ -427,11 +427,14 @@ export function buildPptx(
   for (const interview of report.interviews) {
     // 2問ずつ1ページ
     for (let i = 0; i < interview.qa.length; i += 2) {
-      // 匿名版は括弧書きの補足（工場名・担当・年次など）を落とす。
+      // 匿名版は括弧書きの補足と拠点名の前置きを落とす。
       // 拠点や担当が分かると人数の少ない現場では個人が割れるため。
+      // （「工場統括を担う経営幹部」のように拠点名でない先頭の「工場」は残す）
       const speakerLabel = anonymous
-        ? interview.speaker.replace(/[（(][^）)]*[）)]/g, "").trim() ||
-          interview.speaker
+        ? interview.speaker
+            .replace(/[（(][^）)]*[）)]/g, "")
+            .replace(/^[^\s]+?(?:工場|支店|営業所|事業所)(?:勤務)?の?/, "")
+            .trim() || interview.speaker
         : interview.speaker_internal || interview.speaker;
       const slide = bodySlide(`インタビュー：${speakerLabel}`);
       const pair = interview.qa.slice(i, i + 2);
