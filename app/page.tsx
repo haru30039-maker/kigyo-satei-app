@@ -16,6 +16,7 @@ import { withReportDefaults } from "@/lib/types";
 import { parseScoreXlsx } from "@/lib/xlsxParse";
 import { extractTextFromPdf } from "@/lib/pdfExtract";
 import { extractFiles } from "@/lib/fileExtract";
+import FilePicker from "@/components/FilePicker";
 import ScoreTable from "@/components/ScoreTable";
 import ReportPreview from "@/components/ReportPreview";
 import WixText from "@/components/WixText";
@@ -455,88 +456,34 @@ export default function Home() {
       <section className="border border-gray-300 rounded-lg p-5 mb-6">
         <h2 className="font-bold mb-4">ファイルアップロード</h2>
         <div className="space-y-4">
-          <div>
-            <label className={labelCls}>
-              インタビュー文字起こし（.txt / .pdf 複数可・話者ラベル付き） *
-            </label>
-            <input
-              type="file"
-              accept=".txt,.pdf,text/plain,application/pdf"
-              multiple
-              className="text-sm"
-              onChange={(e) =>
-                setTranscriptFiles(Array.from(e.target.files ?? []))
-              }
-            />
-            {transcriptFiles.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {transcriptFiles.map((f) => f.name).join(" / ")}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={labelCls}>
-              評価表 .xlsx（任意・複数可／学生1人につき1ファイル）
-            </label>
-            <input
-              type="file"
-              accept=".xlsx"
-              multiple
-              className="text-sm"
-              onChange={(e) => setXlsxFiles(Array.from(e.target.files ?? []))}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              ファイル名を学生名として扱います（例：沖田_3年.xlsx）。
-              複数人分あると、AIが各自の採点のばらつきも踏まえて総合判定案を出します。
-            </p>
-            {xlsxFiles.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {xlsxFiles.map((f) => f.name).join(" / ")}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={labelCls}>
-              学生メモ（任意・複数可／.docx .pdf .txt / 写真・スクショ）
-            </label>
-            <input
-              type="file"
-              accept=".docx,.pdf,.txt,.md,image/*"
-              multiple
-              className="text-sm"
-              onChange={(e) => setNotesFiles(Array.from(e.target.files ?? []))}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              参加した学生の人数分アップロードできます。ファイル名は「氏名_学年」推奨（例：井上_2年.docx）。
-            </p>
-            {notesFiles.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {notesFiles.map((f) => f.name).join(" / ")}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className={labelCls}>
-              求人票・企業HP（任意・複数可／.pdf .docx / スクリーンショット・画像）
-            </label>
-            <input
-              type="file"
-              accept=".docx,.pdf,.txt,.md,image/*"
-              multiple
-              className="text-sm"
-              onChange={(e) => setJobFiles(Array.from(e.target.files ?? []))}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              求人サイトやHPのスクリーンショットでも読み取れます。
-            </p>
-            {jobFiles.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {jobFiles.map((f) => f.name).join(" / ")}
-              </p>
-            )}
-          </div>
-
+          <FilePicker
+            label="インタビュー文字起こし（.txt / .pdf 複数可・話者ラベル付き）"
+            accept=".txt,.pdf,text/plain,application/pdf"
+            files={transcriptFiles}
+            onChange={setTranscriptFiles}
+            required
+          />
+          <FilePicker
+            label="評価表 .xlsx（任意・複数可／学生1人につき1ファイル）"
+            accept=".xlsx"
+            files={xlsxFiles}
+            onChange={setXlsxFiles}
+            hint="ファイル名を学生名として扱います（例：沖田_3年.xlsx）。複数人分あると、AIが各自の採点のばらつきも踏まえて総合判定案を出します。"
+          />
+          <FilePicker
+            label="学生メモ（任意・複数可／.docx .pdf .txt / 写真・スクショ）"
+            accept=".docx,.pdf,.txt,.md,image/*"
+            files={notesFiles}
+            onChange={setNotesFiles}
+            hint="参加した学生の人数分アップロードできます。ファイル名は「氏名_学年」推奨（例：井上_2年.docx）。"
+          />
+          <FilePicker
+            label="求人票・企業HP（任意・複数可／.pdf .docx / スクリーンショット・画像）"
+            accept=".docx,.pdf,.txt,.md,image/*"
+            files={jobFiles}
+            onChange={setJobFiles}
+            hint="求人サイトやHPのスクリーンショットでも読み取れます。"
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>求人票・企業HP（テキストで貼る場合）</label>
