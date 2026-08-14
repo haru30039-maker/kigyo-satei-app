@@ -111,3 +111,45 @@ export const CATEGORY_ORDER: CategoryKey[] = CATEGORIES.map((c) => c.key);
 export function normalize(subtotal: number, max: number): number {
   return Math.round((subtotal / max) * 100);
 }
+
+/**
+ * AIが属性を返さなかった場合に、100点換算スコアから属性を判定する保険。
+ * 判定基準はマスタープロンプトと同じ。
+ */
+export function deriveAttribute(
+  normalized: Record<CategoryKey, number>
+): { attribute: string; reason: string } | null {
+  const v = normalized.vision ?? 0;
+  const sy = normalized.system ?? 0;
+  const en = normalized.environment ?? 0;
+  const co = normalized.compensation ?? 0;
+  const re = normalized.relationships ?? 0;
+  const gr = normalized.growth ?? 0;
+  const un = normalized.uniqueness ?? 0;
+
+  const candidates: { attribute: string; score: number; reason: string }[] = [
+    {
+      attribute: "火属性",
+      score: (v >= 85 ? 1 : 0) + (un >= 85 ? 1 : 0) + (gr >= 75 ? 1 : 0),
+      reason: `ビジョンの強さ${v}・独自性${un}・成長機会${gr}と、挑戦志向を示す項目が高いため。`,
+    },
+    {
+      attribute: "水属性",
+      score: (re >= 80 ? 1.5 : 0) + (sy >= 70 ? 1 : 0),
+      reason: `人間関係の密度${re}・仕組みの充実度${sy}と、共感とコミュニティを重視する傾向が強いため。`,
+    },
+    {
+      attribute: "風属性",
+      score: (sy < 60 ? 1.5 : 0) + (v >= 75 ? 1 : 0),
+      reason: `仕組みの充実度${sy}が低い一方でビジョンの強さ${v}が高く、自由度の高い個性的な組織であるため。`,
+    },
+    {
+      attribute: "土属性",
+      score: (co >= 75 ? 1 : 0) + (en >= 75 ? 1 : 0) + (sy >= 75 ? 1 : 0),
+      reason: `給与・休日${co}・環境の快適さ${en}が高く、安定志向で堅実な運営であるため。`,
+    },
+  ];
+  const best = candidates.sort((a, b) => b.score - a.score)[0];
+  if (!best || best.score <= 0) return null;
+  return { attribute: best.attribute, reason: best.reason + "（スコアから自動判定）" };
+}

@@ -128,6 +128,8 @@ export interface WixFields {
 
 export interface GenerateResult {
   scores: Scores;
+  /** 属性をその値にした理由（スコアの数値付き） */
+  attribute_reason?: string;
   report_sections: ReportSections;
   wix_fields: WixFields;
   attribute: string;

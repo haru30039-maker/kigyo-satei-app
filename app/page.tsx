@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useRef, useState } from "react";
-import { CATEGORIES, type CategoryKey } from "@/lib/scoring";
+import { CATEGORIES, deriveAttribute, type CategoryKey } from "@/lib/scoring";
 import type {
   CompanyInfo,
   GenerateResult,
@@ -91,6 +91,7 @@ export default function Home() {
     warmed?: boolean;
     scores?: Scores;
     attribute?: string;
+    attributeReason?: string;
     reportMain?: Partial<GenerateResult["report_sections"]>;
     reportExtra?: Partial<GenerateResult["report_sections"]>;
     wix?: GenerateResult["wix_fields"];
@@ -252,11 +253,14 @@ export default function Home() {
       // ① スコア案
       if (!partial.scores) {
         setProgress("①/④ スコア案を生成中…（1〜2分）");
-        const r = await callStage<{ scores: Scores; attribute: string }>(
-          "scores"
-        );
+        const r = await callStage<{
+          scores: Scores;
+          attribute: string;
+          attribute_reason?: string;
+        }>("scores");
         partial.scores = r.scores;
         partial.attribute = r.attribute;
+        partial.attributeReason = r.attribute_reason;
       }
       const scoresSummary = CATEGORIES.map(
         (c) =>
@@ -291,9 +295,19 @@ export default function Home() {
         partial.wix = r.wix_fields;
       }
 
+      // AIが属性を返さないことがあるため、その場合はスコアから判定する
+      const fallback = partial.attribute
+        ? null
+        : deriveAttribute(
+            Object.fromEntries(
+              CATEGORIES.map((c) => [c.key, partial.scores![c.key]?.normalized ?? 0])
+            ) as Record<CategoryKey, number>
+          );
+
       const result: GenerateResult = {
         scores: partial.scores!,
-        attribute: partial.attribute ?? "",
+        attribute: partial.attribute || fallback?.attribute || "",
+        attribute_reason: partial.attributeReason || fallback?.reason,
         report_sections: withReportDefaults({
           ...partial.reportMain,
           ...partial.reportExtra,
@@ -601,24 +615,41 @@ export default function Home() {
         </div>
       )}
       {result && !isDemo && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3">
-          <span className="text-xs font-bold text-gray-600">
-            属性（スコアからAIが判定）
-          </span>
-          <select
-            className="border border-gray-300 rounded px-3 py-2 text-sm bg-white font-bold"
-            value={company.attribute}
-            onChange={(e) => setField("attribute", e.target.value)}
-          >
-            <option value="">未判定</option>
-            <option value="火属性">火属性</option>
-            <option value="水属性">水属性</option>
-            <option value="風属性">風属性</option>
-            <option value="土属性">土属性</option>
-          </select>
-          <span className="text-xs text-gray-500">
-            チームの判断で変えたい場合はここで変更できます（Wix掲載用テキストに反映されます）。
-          </span>
+        <div className="mb-4 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-gray-600">
+              属性（スコアからAIが判定）
+            </span>
+            <select
+              className="border border-gray-300 rounded px-3 py-2 text-sm bg-white font-bold"
+              value={company.attribute}
+              onChange={(e) => setField("attribute", e.target.value)}
+            >
+              <option value="">未判定</option>
+              <option value="火属性">火属性</option>
+              <option value="水属性">水属性</option>
+              <option value="風属性">風属性</option>
+              <option value="土属性">土属性</option>
+            </select>
+            {result.attribute && company.attribute !== result.attribute && (
+              <button
+                type="button"
+                onClick={() => setField("attribute", result.attribute)}
+                className="text-xs font-bold text-gray-700 underline"
+              >
+                AIの判定（{result.attribute}）に戻す
+              </button>
+            )}
+            <span className="text-xs text-gray-500">
+              チームの判断で変更できます（Wix掲載用テキストに反映されます）。
+            </span>
+          </div>
+          {result.attribute_reason && (
+            <p className="mt-2 text-xs leading-relaxed text-gray-700">
+              <span className="font-bold">判定理由（AI）：</span>
+              {result.attribute_reason}
+            </p>
+          )}
         </div>
       )}
 
