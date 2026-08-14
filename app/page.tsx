@@ -185,6 +185,13 @@ export default function Home() {
         researchers: researchers || company.researchers,
         visits: activeVisits,
       };
+      // pptx出力は company の state を使うため、派生した値をここで反映しておく
+      setCompany((prev) => ({
+        ...prev,
+        visitDate: companyInfo.visitDate,
+        researchers: companyInfo.researchers,
+        visits: activeVisits,
+      }));
 
       const base = {
         companyInfo,

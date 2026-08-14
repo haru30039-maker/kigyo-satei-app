@@ -427,8 +427,11 @@ export function buildPptx(
   for (const interview of report.interviews) {
     // 2問ずつ1ページ
     for (let i = 0; i < interview.qa.length; i += 2) {
+      // 匿名版は括弧書きの補足（工場名・担当・年次など）を落とす。
+      // 拠点や担当が分かると人数の少ない現場では個人が割れるため。
       const speakerLabel = anonymous
-        ? interview.speaker
+        ? interview.speaker.replace(/[（(][^）)]*[）)]/g, "").trim() ||
+          interview.speaker
         : interview.speaker_internal || interview.speaker;
       const slide = bodySlide(`インタビュー：${speakerLabel}`);
       const pair = interview.qa.slice(i, i + 2);
