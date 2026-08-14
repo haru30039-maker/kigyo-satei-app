@@ -36,7 +36,9 @@ export function buildPptx(
   // 既定は匿名版。実名版はチーム内用（社外提出不可）。
   const anonymous = opts.anonymous !== false;
   // 匿名版は、拠点名で発言者を絞り込める書き方を本文からも取り除く
-  const report = anonymous ? anonymizeDeep(data.report) : data.report;
+  const report = anonymous
+    ? anonymizeDeep(data.report, data.report.interviews)
+    : data.report;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";

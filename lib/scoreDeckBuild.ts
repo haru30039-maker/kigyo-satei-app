@@ -29,8 +29,9 @@ export function buildScoreDeck(
   const { companyInfo } = data;
   const anonymous = opts.anonymous !== false;
   // 匿名版は、拠点名で発言者を絞り込める書き方をスコアの根拠からも取り除く
-  const scores = anonymous ? anonymizeDeep(data.scores) : data.scores;
-  const report = anonymous ? anonymizeDeep(data.report) : data.report;
+  const ivs = data.report?.interviews;
+  const scores = anonymous ? anonymizeDeep(data.scores, ivs) : data.scores;
+  const report = anonymous ? anonymizeDeep(data.report, ivs) : data.report;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";

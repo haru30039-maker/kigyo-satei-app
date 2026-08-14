@@ -48,7 +48,50 @@ export function deepMapStrings<T>(value: T, fn: (s: string) => string): T {
   return value;
 }
 
-/** 匿名版の出力全体に適用する */
-export function anonymizeDeep<T>(value: T): T {
-  return deepMapStrings(value, scrubSiteAttribution);
+/**
+ * 実名版の話者表記（speaker_internal）から「実名 → 匿名表記」の対応表を作る。
+ * 本文中に残った実名（例：「中村常務インタビューより」）を匿名表記に置き換えるため。
+ * 報告先である経営者本人（代表取締役・社長）は実名のままでよいので対象外。
+ */
+export function buildNameMap(
+  interviews: { speaker: string; speaker_internal?: string }[]
+): [string, string][] {
+  const map: [string, string][] = [];
+  for (const iv of interviews ?? []) {
+    if (!iv.speaker_internal) continue;
+    if (/代表取締役|社長/.test(iv.speaker)) continue; // 経営者本人は実名可
+    const anon = anonymizeSpeakerLabel(iv.speaker);
+    // 「中村常務（工場統括）｜ファイル名.pdf」→「中村常務」
+    const head = iv.speaker_internal.split(/[｜|（(]/)[0];
+    const re =
+      /[一-龥]{1,4}(?:さん|常務|専務|部長|課長|工場長)|[ァ-ヶー]{3,8}さん/g;
+    for (const m of head.matchAll(re)) {
+      if (m[0].length >= 2) map.push([m[0], anon]);
+    }
+  }
+  // 長い表記から先に置換する（「中村常務」を「中村」より先に）
+  return map.sort((a, b) => b[0].length - a[0].length);
+}
+
+/** 少人数の会社では役職だけで個人が特定できるものを一般語にする */
+const UNIQUE_TITLES: [RegExp, string][] = [
+  [/常務取締役|常務/g, "経営幹部"],
+  [/専務取締役|専務/g, "経営幹部"],
+];
+
+/**
+ * 匿名版の出力全体に適用する。
+ * interviews を渡すと、本文に残った実名も匿名表記に置き換える。
+ */
+export function anonymizeDeep<T>(
+  value: T,
+  interviews?: { speaker: string; speaker_internal?: string }[]
+): T {
+  const nameMap = interviews ? buildNameMap(interviews) : [];
+  return deepMapStrings(value, (text) => {
+    let t = scrubSiteAttribution(text);
+    for (const [name, anon] of nameMap) t = t.split(name).join(anon);
+    for (const [re, rep] of UNIQUE_TITLES) t = t.replace(re, rep);
+    return t;
+  });
 }
