@@ -153,3 +153,29 @@ export function deriveAttribute(
   if (!best || best.score <= 0) return null;
   return { attribute: best.attribute, reason: best.reason + "（スコアから自動判定）" };
 }
+
+/**
+ * 学生の採点の書き出し（全員一致／おおむね一致／割れた）を、
+ * 実際の点差から計算し直して補正する。
+ * AIが最大・最小を数え間違えることがあるため、判定はコード側で行う。
+ * 例：「おおむね一致（井上4・沖田5・星野4・赤松4・田中3）」→ 差2点なので「学生の採点が割れた（…）」
+ */
+export function fixScoreSpreadWording(evidence: string): string {
+  const PHRASES = /(全員一致|おおむね一致|学生の採点が割れた|学生の採点は割れた)\s*[（(]([^）)]*)[）)]/g;
+  return evidence.replace(PHRASES, (whole, _phrase: string, inner: string) => {
+    // 「井上4・沖田5・…」を区切り、各要素の末尾の数字を点数として取る
+    const scores = inner
+      .split(/[・、,]/)
+      .map((seg) => {
+        const m = seg.trim().match(/([1-5])\s*(?:点)?$/);
+        return m ? Number(m[1]) : null;
+      })
+      .filter((n): n is number => n != null);
+    if (scores.length < 3) return whole; // 学生の採点でなければ触らない
+
+    const diff = Math.max(...scores) - Math.min(...scores);
+    const correct =
+      diff === 0 ? "全員一致" : diff === 1 ? "おおむね一致" : "学生の採点が割れた";
+    return `${correct}（${inner}）`;
+  });
+}

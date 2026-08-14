@@ -3,7 +3,12 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useRef, useState } from "react";
-import { CATEGORIES, deriveAttribute, type CategoryKey } from "@/lib/scoring";
+import {
+  CATEGORIES,
+  deriveAttribute,
+  fixScoreSpreadWording,
+  type CategoryKey,
+} from "@/lib/scoring";
 import type {
   CompanyInfo,
   GenerateResult,
@@ -266,6 +271,14 @@ export default function Home() {
           attribute: string;
           attribute_reason?: string;
         }>("scores");
+        // 学生の採点の書き出し（全員一致／おおむね一致／割れた）を点差から補正する
+        for (const cat of CATEGORIES) {
+          const c = r.scores?.[cat.key];
+          if (!c?.items) continue;
+          for (const it of c.items) {
+            it.evidence = fixScoreSpreadWording(it.evidence ?? "");
+          }
+        }
         partial.scores = r.scores;
         partial.attribute = r.attribute;
         partial.attributeReason = r.attribute_reason;
