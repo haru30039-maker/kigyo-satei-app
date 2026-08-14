@@ -1,6 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { CATEGORIES } from "./scoring";
 import { drawRadarChart } from "./radarChart";
+import { anonymizeDeep, anonymizeSpeakerLabel } from "./anonymize";
 import type {
   CompanyInfo,
   ReportSections,
@@ -31,9 +32,11 @@ export function buildPptx(
   data: ExportRequest,
   opts: { chartPath?: string; anonymous?: boolean } = {}
 ): PptxGenJS {
-  const { companyInfo, scores, report } = data;
+  const { companyInfo, scores } = data;
   // 既定は匿名版。実名版はチーム内用（社外提出不可）。
   const anonymous = opts.anonymous !== false;
+  // 匿名版は、拠点名で発言者を絞り込める書き方を本文からも取り除く
+  const report = anonymous ? anonymizeDeep(data.report) : data.report;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";
@@ -427,14 +430,8 @@ export function buildPptx(
   for (const interview of report.interviews) {
     // 2問ずつ1ページ
     for (let i = 0; i < interview.qa.length; i += 2) {
-      // 匿名版は括弧書きの補足と拠点名の前置きを落とす。
-      // 拠点や担当が分かると人数の少ない現場では個人が割れるため。
-      // （「工場統括を担う経営幹部」のように拠点名でない先頭の「工場」は残す）
       const speakerLabel = anonymous
-        ? interview.speaker
-            .replace(/[（(][^）)]*[）)]/g, "")
-            .replace(/^[^\s]+?(?:工場|支店|営業所|事業所)(?:勤務)?の?/, "")
-            .trim() || interview.speaker
+        ? anonymizeSpeakerLabel(interview.speaker)
         : interview.speaker_internal || interview.speaker;
       const slide = bodySlide(`インタビュー：${speakerLabel}`);
       const pair = interview.qa.slice(i, i + 2);

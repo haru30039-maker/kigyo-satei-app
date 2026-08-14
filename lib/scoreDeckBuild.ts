@@ -1,6 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { CATEGORIES } from "./scoring";
 import { drawRadarChart } from "./radarChart";
+import { anonymizeDeep } from "./anonymize";
 import type { CompanyInfo, ReportSections, Scores } from "./types";
 
 // スコア根拠説明資料（報告MTGで学生がスコアの根拠を説明するための資料）
@@ -25,8 +26,11 @@ export function buildScoreDeck(
   data: ScoreDeckRequest,
   opts: { anonymous?: boolean } = {}
 ): PptxGenJS {
-  const { companyInfo, scores, report } = data;
+  const { companyInfo } = data;
   const anonymous = opts.anonymous !== false;
+  // 匿名版は、拠点名で発言者を絞り込める書き方をスコアの根拠からも取り除く
+  const scores = anonymous ? anonymizeDeep(data.scores) : data.scores;
+  const report = anonymous ? anonymizeDeep(data.report) : data.report;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
   pptx.author = "#ともあゆ 学生企業査定";
