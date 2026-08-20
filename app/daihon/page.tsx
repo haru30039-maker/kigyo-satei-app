@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import LZString from "lz-string";
 import type { DaihonResult, DaihonVariant } from "@/lib/daihon";
+import type { DaihonStage } from "@/lib/daihonPrompt";
 import { VARIANT_LABEL } from "@/lib/daihon";
 import { buildDaihonHtmlBlob } from "@/lib/daihonHtml";
 import { downloadBlob, safeName } from "@/lib/exportFiles";
@@ -28,12 +29,20 @@ export default function DaihonPage() {
 
   const daihon = daihons[variant];
 
-  async function callApi(v: DaihonVariant): Promise<DaihonResult> {
+  // 生成済みのステージを覚えておき、途中で失敗しても最初からやり直さない
+  const partialRef = useRef<{
+    key: string;
+    brief?: DaihonResult;
+    fullA?: DaihonResult;
+    fullB?: DaihonResult;
+  } | null>(null);
+
+  async function callApi(stage: DaihonStage): Promise<DaihonResult> {
     const form = new FormData();
     form.append("report", reportFile!);
     if (scoreFile) form.append("score", scoreFile);
     if (company.trim()) form.append("company", company.trim());
-    form.append("variant", v);
+    form.append("stage", stage);
 
     const res = await fetch("/api/daihon", { method: "POST", body: form });
     const raw = await res.text();
@@ -55,6 +64,19 @@ export default function DaihonPage() {
     return data as DaihonResult;
   }
 
+  /** 詳細版の前半・後半を1本の台本につなぎ直す */
+  function mergeFull(a: DaihonResult, b: DaihonResult): DaihonResult {
+    return {
+      ...a,
+      variant: "full",
+      sections: [...a.sections, ...b.sections],
+      needs_check: b.needs_check ?? [],
+      qa: b.qa?.length ? b.qa : a.qa,
+      memo: b.memo?.length ? b.memo : a.memo,
+      rules: a.rules?.length ? a.rules : b.rules,
+    };
+  }
+
   async function generate() {
     setError(null);
     setCopied(false);
@@ -62,19 +84,40 @@ export default function DaihonPage() {
       setError("査定レポート（.pptx）を選択してください");
       return;
     }
+
+    // 入力が変わっていたら途中結果を捨てる（同じ入力ならリトライで再利用）
+    const key = [
+      `${reportFile.name}:${reportFile.size}`,
+      scoreFile ? `${scoreFile.name}:${scoreFile.size}` : "",
+      company.trim(),
+    ].join("|");
+    if (partialRef.current?.key !== key) partialRef.current = { key };
+    const partial = partialRef.current;
+
     setLoading(true);
-    setDaihons({});
     try {
-      // 簡易版を先に出して表示し、続けて詳細版を足す。
-      // 資料の読み込み分はキャッシュに載るので、2本目のほうが速い。
-      setProgress("簡易版（約20分）を生成中…（1分ほど）");
-      const brief = await callApi("brief");
-      setDaihons({ brief });
+      // 簡易版を先に出して表示し、続けて詳細版を前半・後半に分けて生成する。
+      // 詳細版は1回で出すとサーバーの実行時間上限（300秒）を超えるため分割している。
+      // 資料の読み込み分はキャッシュに載るので、2本目以降は入力が速く安くなる。
+      if (!partial.brief) {
+        setProgress("①/③ 簡易版（約20分）を生成中…（1〜2分）");
+        partial.brief = await callApi("brief");
+      }
+      setDaihons({ brief: partial.brief });
       setVariant("brief");
 
-      setProgress("詳細版（約60分）を生成中…（2〜3分）");
-      const full = await callApi("full");
-      setDaihons({ brief, full });
+      if (!partial.fullA) {
+        setProgress("②/③ 詳細版の前半（スコアの詳細まで）を生成中…（2〜3分）");
+        partial.fullA = await callApi("full_a");
+      }
+      if (!partial.fullB) {
+        setProgress("③/③ 詳細版の後半（改善提案・ここから先）を生成中…（2〜3分）");
+        partial.fullB = await callApi("full_b");
+      }
+      setDaihons({
+        brief: partial.brief,
+        full: mergeFull(partial.fullA, partial.fullB),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成に失敗しました");
     } finally {

@@ -9,7 +9,8 @@ import {
 import {
   DAIHON_MAX_TOKENS,
   DAIHON_SHARED_RULES,
-  daihonVariantInstruction,
+  daihonStageInstruction,
+  type DaihonStage,
 } from "@/lib/daihonPrompt";
 
 export const runtime = "nodejs";
@@ -47,8 +48,10 @@ export async function POST(request: NextRequest) {
     );
   }
   const company = String(form.get("company") ?? "").trim();
-  const variant: DaihonVariant =
-    form.get("variant") === "full" ? "full" : "brief";
+  const rawStage = String(form.get("stage") ?? "brief");
+  const stage: DaihonStage =
+    rawStage === "full_a" || rawStage === "full_b" ? rawStage : "brief";
+  const variant: DaihonVariant = stage === "brief" ? "brief" : "full";
 
   let reportSlides: string[];
   try {
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
     // こうすると2回目の呼び出しで資料の読み込み分がキャッシュに当たる。
     const stream = client.messages.stream({
       model: "claude-sonnet-4-6",
-      max_tokens: DAIHON_MAX_TOKENS[variant],
+      max_tokens: DAIHON_MAX_TOKENS[stage],
       system: [
         {
           type: "text",
@@ -131,7 +134,7 @@ export async function POST(request: NextRequest) {
               text: userContent,
               cache_control: { type: "ephemeral" },
             },
-            { type: "text", text: daihonVariantInstruction(variant) },
+            { type: "text", text: daihonStageInstruction(stage) },
           ],
         },
       ],
@@ -169,7 +172,7 @@ export async function POST(request: NextRequest) {
     console.log(
       JSON.stringify({
         route: "daihon",
-        variant,
+        stage,
         input_chars: userContent.length,
         duration_ms: Date.now() - started,
         input_tokens: response.usage.input_tokens,

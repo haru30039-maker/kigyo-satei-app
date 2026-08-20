@@ -12,7 +12,9 @@ import {
 import {
   DAIHON_MAX_TOKENS,
   DAIHON_SHARED_RULES,
-  daihonVariantInstruction,
+  daihonStageInstruction,
+  STAGE_OF_VARIANT,
+  type DaihonStage,
 } from "../lib/daihonPrompt";
 
 const REPORT = "/Users/haruna/Downloads/有限会社安西工業_査定レポート（匿名版）.pptx";
@@ -51,11 +53,11 @@ console.log(`数えた項目数:\n${counted}\n`);
 
 const client = new Anthropic({ apiKey: key });
 
-async function run(variant: DaihonVariant): Promise<DaihonResult> {
+async function runStage(stage: DaihonStage): Promise<DaihonResult> {
   const t0 = Date.now();
   const stream = client.messages.stream({
     model: "claude-sonnet-4-6",
-    max_tokens: DAIHON_MAX_TOKENS[variant],
+    max_tokens: DAIHON_MAX_TOKENS[stage],
     system: [
       { type: "text", text: DAIHON_SHARED_RULES, cache_control: { type: "ephemeral" } },
     ],
@@ -64,7 +66,7 @@ async function run(variant: DaihonVariant): Promise<DaihonResult> {
         role: "user",
         content: [
           { type: "text", text: userContent, cache_control: { type: "ephemeral" } },
-          { type: "text", text: daihonVariantInstruction(variant) },
+          { type: "text", text: daihonStageInstruction(stage) },
         ],
       },
     ],
@@ -72,17 +74,37 @@ async function run(variant: DaihonVariant): Promise<DaihonResult> {
   const res = await stream.finalMessage();
   const u = res.usage;
   console.log(
-    `[${variant}] stop=${res.stop_reason} ${((Date.now() - t0) / 1000).toFixed(0)}秒 ` +
+    `[${stage}] stop=${res.stop_reason} ${((Date.now() - t0) / 1000).toFixed(0)}秒 ` +
       `in=${u.input_tokens} cacheW=${u.cache_creation_input_tokens ?? 0} cacheR=${u.cache_read_input_tokens ?? 0} out=${u.output_tokens}`
   );
   const text = (res.content.find((b) => b.type === "text") as { text: string }).text.trim();
   const parsed = JSON.parse(
     text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)
   ) as DaihonResult;
-  parsed.variant = variant;
   if (!Array.isArray(parsed.needs_check)) parsed.needs_check = [];
-  if (variant === "brief") parsed.needs_check = [];
   return parsed;
+}
+
+/** 詳細版は前半・後半に分けて生成し、1本につなぎ直す */
+async function run(variant: DaihonVariant): Promise<DaihonResult> {
+  const stages = STAGE_OF_VARIANT[variant];
+  const parts: DaihonResult[] = [];
+  for (const st of stages) parts.push(await runStage(st));
+  const [a, b] = parts;
+  const merged: DaihonResult =
+    parts.length === 1
+      ? a
+      : {
+          ...a,
+          sections: [...a.sections, ...b.sections],
+          needs_check: b.needs_check ?? [],
+          qa: b.qa?.length ? b.qa : a.qa,
+          memo: b.memo?.length ? b.memo : a.memo,
+          rules: a.rules?.length ? a.rules : b.rules,
+        };
+  merged.variant = variant;
+  if (variant === "brief") merged.needs_check = [];
+  return merged;
 }
 
 // 引数で版を絞れる（例: npx tsx scripts/test-daihon.mts full）
