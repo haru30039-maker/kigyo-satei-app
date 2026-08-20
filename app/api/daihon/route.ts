@@ -1,60 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { extractPptxSlideTexts, type DaihonResult } from "@/lib/daihon";
+import {
+  countSlideItems,
+  extractPptxSlideTexts,
+  type DaihonResult,
+  type DaihonVariant,
+} from "@/lib/daihon";
+import {
+  DAIHON_MAX_TOKENS,
+  DAIHON_SHARED_RULES,
+  daihonVariantInstruction,
+} from "@/lib/daihonPrompt";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 // プライバシー方針：アップロードされたレポート・生成した台本はサーバーに保存しない。
 // ログはメタ情報のみ。
-
-const DAIHON_PROMPT = `あなたは学生団体 #ともあゆ の「学生企業査定」チームのアシスタントです。
-入力として、完成した査定レポート（スライドごとのテキスト。任意でスコア根拠説明資料も）が与えられます。
-これをもとに、**学生が企業の社長への報告MTGでそのまま音読できる説明台本**を作ってください。
-
-## 台本の構成（この順序・この考え方を必ず守る）
-0. 冒頭あいさつ（1分）— 訪問への感謝、「要点に絞って報告し、全体は資料でお渡しする」
-1. 最初に必ず伝えること（2分）— ①スコアはランク付けではなく特徴分析。低い点は「悪い」ではなく「仕組みにしていない」の意味 ②インタビューは匿名の約束なので発言者は言えない ③すべて確定前ドラフトで、事実誤認はこの場で指摘してほしい
-2. 会社の「形」（2分）— 総合スコアのチャートを見せ、突出して高いカテゴリと低いカテゴリを数字で示し、「今日は高い2つと低い2つだけ説明する」と宣言
-3. 高い2つ（3分）— 各カテゴリの根拠を、レポート内の発言引用を使って説明
-4. 低い2つ（3分）— 「悪いではない」と前置きし、根拠発言を添え、特徴の裏返しとして前向きに言い換える
-5. レポートからの重要フィードバック（3分）— 「求人票と現実のギャップ」から最も実利のある指摘1〜2個（すぐ直せる指摘があれば必ず入れる）
-6. 結論：合う人・合わない人（2分）— 「合う人だけが応募し、合わない人が間違えて入らないようにする」という目的を述べ、最後に必ず「社長、この整理はご自身の感覚と合っていますか？」と質問して反応をもらう
-7. 確認のお願いとクロージング（2分）— レポートの「情報不足・追加で確認すべき点」を後日でよいので教えてほしいと依頼し、「Web掲載の範囲は内容確認後に別途相談」で締める
-
-## 絶対に守るルール
-- セリフはレポートに書かれている内容だけから作る。レポートにない数字・エピソード・発言を創作しない
-- **社長以外の個人名・役職名・勤務拠点名は一切出さない**（「管理部門の方」「現場のベテランの方」のような匿名表記にする）。
-  資料に実名や拠点名が残っていた場合でも、台本には書かない（「中村常務」→「工場統括を担う経営幹部の方」、「弓削工場の社員」→「現場の若手の方」）。
-  台本はインタビュー協力者本人が特定されうる場で読み上げるため、ここは絶対に守る。
-- **引用は資料の表記どおりに書く**。言い回しを整えて短くしない。
-  資料が「〜という趣旨の発言があった」と留保付きで書いている内容は、台本でも「〜という趣旨のお話がありました」と留保付きにする（「と明言されていました」に格上げしない）。
-  求人票の修正案など、社長の手元の資料に文章として載っているものは、その文章を省略せずそのまま読み上げる（読み上げと配付資料が食い違うと不信につながる）。
-- **「発言」と「学生の分析・観察」を混ぜない**。資料の地の文（現状の課題・見えたこと・総括など）は学生の見解なので、「インタビューで語られていました」と言ってはいけない。
-  「私たちが見た限りでは」「レポートでは〜と整理しました」と述べる。逆に、社長本人の発言が資料にある場合は、それを優先して引用する（本人の言葉で始めたほうが指摘は受け入れられやすい）。
-- **人数・範囲を盛らない**。資料が「社長と一部の社員が語っていた」としか書いていないものを「全員が」「全社員が」と言わない。資料の範囲そのままで述べる。
-- **項目数は配付資料と一致させる**。社長は同じスライドを見ながら聞いているので、「四つ挙げています」と言ってスライドに5項目あると、都合の悪い項目を隠したように見える。
-  全部読み上げないときは「資料には五つ挙げていますが、今日は主なものを四つご説明します」と、数の差を先に断る。
-- **セクションの minutes の合計が duration_note の分数と一致するようにする**（合計が15分になるよう各セクションを割り振る）。
-- セリフは「」で括った自然な話し言葉。学生が社長に話す丁寧語
-- rules には開始前に確認する最重要注意（名前を口に出さない／インタビュー個別スライドには触れない／指摘はメモ 等）を入れる
-- qa には想定問答を4件（発言者を聞かれたら／低スコアへの反発／数字の誤り指摘／公開されているのか）。
-  **引用の正確さを保証する言い方はさせない**（「文字起こしに忠実です」「正確に反映されていると自信を持っています」等）。
-  音声が聞き取れていない箇所は必ずあるので、「聞き取りが不確かな箇所もありますので、違和感があればその場でご指摘ください」と、訂正を受ける姿勢で答える。
-- slide_cue はアップロードされた資料のスライド番号に即して書く（スライド番号が特定できない場合は「該当スライド」と書く）
-
-## 出力形式（単一のJSONオブジェクトのみ。前置き・コードフェンス禁止）
-{
-  "company": "企業名",
-  "title": "企業名を入れて「有限会社○○さま 報告MTG台本」の形式（個人名は入れない）",
-  "duration_note": "説明 約15分＋質疑",
-  "rules": ["…", "…"],
-  "sections": [
-    { "no": "0", "title": "冒頭あいさつ", "minutes": 1, "slide_cue": "スライド1", "lines": ["「…」"], "direction": "任意の注意書き" }
-  ],
-  "qa": [{ "q": "…", "a": "「…」" }],
-  "memo": ["読み上げない補足", "…"]
-}`;
 
 function extractJson(text: string): unknown {
   const trimmed = text.trim();
@@ -85,6 +47,8 @@ export async function POST(request: NextRequest) {
     );
   }
   const company = String(form.get("company") ?? "").trim();
+  const variant: DaihonVariant =
+    form.get("variant") === "full" ? "full" : "brief";
 
   let reportSlides: string[];
   try {
@@ -125,21 +89,52 @@ export async function POST(request: NextRequest) {
         scoreSlides.map((t, i) => `## スライド${i + 1}\n${t}`).join("\n\n")
     );
   }
+  // 項目数はコード側で数えて事実として渡す（AIが数え間違えるため）
+  const counted = [
+    countSlideItems("査定レポート", reportSlides),
+    scoreSlides ? countSlideItems("スコア根拠説明資料", scoreSlides) : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  if (counted) {
+    parts.push(
+      `# 資料から機械的に数えた項目数（正確な数。これと食い違う言い方をしない）\n` +
+        `${counted}\n\n` +
+        `「◎が5つ・✕が4つ」のように読み上げる場合は、必ずこの数と一致させること。` +
+        `全部読み上げないときは「資料には◯つ挙げていますが、今日は主なものを△つご説明します」と先に断る。`
+    );
+  }
+
   const userContent = parts.join("\n\n---\n\n");
 
   const client = new Anthropic();
   try {
+    // 簡易版・詳細版を続けて生成するため、共通ルールと資料本文までを
+    // キャッシュ対象にし、版ごとに違う構成の指示だけを後ろに足す。
+    // こうすると2回目の呼び出しで資料の読み込み分がキャッシュに当たる。
     const stream = client.messages.stream({
       model: "claude-sonnet-4-6",
-      max_tokens: 8000,
+      max_tokens: DAIHON_MAX_TOKENS[variant],
       system: [
         {
           type: "text",
-          text: DAIHON_PROMPT,
+          text: DAIHON_SHARED_RULES,
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: userContent }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: userContent,
+              cache_control: { type: "ephemeral" },
+            },
+            { type: "text", text: daihonVariantInstruction(variant) },
+          ],
+        },
+      ],
     });
     const response = await stream.finalMessage();
 
@@ -166,12 +161,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 版はサーバー側で確定させる（モデルの自己申告に任せない）
+    result.variant = variant;
+    if (!Array.isArray(result.needs_check)) result.needs_check = [];
+    if (variant === "brief") result.needs_check = [];
+
     console.log(
       JSON.stringify({
         route: "daihon",
+        variant,
         input_chars: userContent.length,
         duration_ms: Date.now() - started,
         input_tokens: response.usage.input_tokens,
+        cache_read: response.usage.cache_read_input_tokens ?? 0,
         output_tokens: response.usage.output_tokens,
       })
     );
