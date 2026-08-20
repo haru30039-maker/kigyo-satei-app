@@ -2,7 +2,8 @@
 
 import { CATEGORIES } from "@/lib/scoring";
 import { normalize } from "@/lib/scoring";
-import type { Scores } from "@/lib/types";
+import type { CompanyInfo, Scores } from "@/lib/types";
+import { buildScoresXlsx, downloadBlob, safeName } from "@/lib/exportFiles";
 
 // Tab1: 7カテゴリ×31項目のスコア表。score は 1〜5 で手動上書き可能。
 // 上書きすると subtotal / normalized を再計算して親に返す（チャートも即再描画される）。
@@ -10,9 +11,13 @@ import type { Scores } from "@/lib/types";
 export default function ScoreTable({
   scores,
   onChange,
+  companyInfo,
+  demo,
 }: {
   scores: Scores;
   onChange: (next: Scores) => void;
+  companyInfo: CompanyInfo;
+  demo?: boolean;
 }) {
   function updateScore(catKey: string, itemIdx: number, value: number) {
     const cat = scores[catKey as keyof Scores];
@@ -32,8 +37,29 @@ export default function ScoreTable({
     onChange(next);
   }
 
+  function downloadXlsx() {
+    downloadBlob(
+      buildScoresXlsx(scores, companyInfo),
+      `${safeName(companyInfo.name)}_スコア案.xlsx`
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3">
+        <button
+          onClick={downloadXlsx}
+          disabled={demo}
+          className="rounded-lg bg-gray-900 px-5 py-2.5 font-bold text-yellow-400 hover:bg-gray-700 disabled:opacity-50"
+        >
+          {demo ? "サンプル表示中はダウンロード不可" : "スコア案 .xlsx"}
+        </button>
+        <span className="text-xs text-gray-500">
+          「サマリー」＝カテゴリ別の合計と100点換算、「明細」＝31項目のスコアと根拠。
+          下でスコアを直してから押すと、直した内容で保存されます。
+        </span>
+      </div>
+
       {CATEGORIES.map((catDef) => {
         const cat = scores[catDef.key];
         if (!cat) return null;

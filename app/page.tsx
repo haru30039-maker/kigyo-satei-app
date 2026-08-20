@@ -25,7 +25,16 @@ import FilePicker from "@/components/FilePicker";
 import ScoreTable from "@/components/ScoreTable";
 import ReportPreview from "@/components/ReportPreview";
 import WixText from "@/components/WixText";
-import RadarChart, { downloadChartPng } from "@/components/RadarChart";
+import RadarChart, {
+  chartPngBlob,
+  downloadChartPng,
+} from "@/components/RadarChart";
+import {
+  buildScoresXlsx,
+  buildWixTextBlob,
+  downloadBlob,
+  safeName,
+} from "@/lib/exportFiles";
 import { DEMO_RESULT } from "@/lib/demoData";
 
 const EMPTY_COMPANY: CompanyInfo = {
@@ -65,6 +74,7 @@ export default function Home() {
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [tab, setTab] = useState<Tab>("score");
+  const [zipping, setZipping] = useState(false);
 
   const normalizedScores = useMemo(() => {
     if (!result) return null;
@@ -350,6 +360,40 @@ export default function Home() {
     }
   }
 
+  /** ①スコア案・③Wixテキスト・④チャートを1つのZIPにまとめて保存する */
+  async function downloadAll() {
+    if (!result || !normalizedScores) return;
+    setError(null);
+    setZipping(true);
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      const base = safeName(company.name);
+      // Blobのまま渡せる環境が多いが、確実に扱えるArrayBufferに変換して入れる
+      const add = async (name: string, blob: Blob) =>
+        zip.file(name, await blob.arrayBuffer());
+      await add(`${base}_スコア案.xlsx`, buildScoresXlsx(result.scores, company));
+      await add(
+        `${base}_Wix掲載用テキスト.txt`,
+        buildWixTextBlob(result.wix_fields, result.scores, company)
+      );
+      await add(
+        `${base}_企業特性チャート.png`,
+        await chartPngBlob(normalizedScores)
+      );
+      downloadBlob(
+        await zip.generateAsync({ type: "blob" }),
+        `${base}_スコア・Wix・チャート.zip`
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "まとめて保存に失敗しました"
+      );
+    } finally {
+      setZipping(false);
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     location.href = "/login";
@@ -620,6 +664,22 @@ export default function Home() {
         </div>
       )}
 
+      {result && !isDemo && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-yellow-400 bg-yellow-50 px-4 py-3">
+          <button
+            onClick={downloadAll}
+            disabled={zipping}
+            className="rounded-lg bg-gray-900 px-5 py-2.5 font-bold text-yellow-400 hover:bg-gray-700 disabled:opacity-50"
+          >
+            {zipping ? "まとめています…" : "①③④をまとめて保存（ZIP）"}
+          </button>
+          <span className="text-xs text-gray-600">
+            スコア案(.xlsx)・Wix掲載用テキスト(.txt)・チャート(.png)
+            の3ファイルが入ります。査定レポート(.pptx)は「② 査定レポート」タブから保存してください。
+          </span>
+        </div>
+      )}
+
       {result && (
         <section>
           <div className="flex border-b border-gray-300 mb-5">
@@ -646,7 +706,12 @@ export default function Home() {
           </div>
 
           {tab === "score" && (
-            <ScoreTable scores={result.scores} onChange={updateScores} />
+            <ScoreTable
+              scores={result.scores}
+              onChange={updateScores}
+              companyInfo={company}
+              demo={isDemo}
+            />
           )}
 
           {tab === "report" && (
@@ -664,6 +729,7 @@ export default function Home() {
               wix={result.wix_fields}
               scores={result.scores}
               companyInfo={company}
+              demo={isDemo}
             />
           )}
 
@@ -681,12 +747,15 @@ export default function Home() {
                 onClick={() =>
                   downloadChartPng(
                     normalizedScores,
-                    `${company.name || "chart"}_企業特性チャート.png`
+                    `${safeName(company.name)}_企業特性チャート.png`
                   )
                 }
-                className="px-6 py-2.5 rounded-lg bg-gray-900 text-yellow-400 font-bold hover:bg-gray-700"
+                disabled={isDemo}
+                className="px-6 py-2.5 rounded-lg bg-gray-900 text-yellow-400 font-bold hover:bg-gray-700 disabled:opacity-50"
               >
-                透過PNG（1200×1200）をダウンロード
+                {isDemo
+                  ? "サンプル表示中はダウンロード不可"
+                  : "透過PNG（1200×1200）をダウンロード"}
               </button>
               <p className="text-xs text-gray-400">
                 ※ ①スコア案タブで数値を修正すると即座に再描画されます

@@ -89,24 +89,33 @@ export function toChartValues(normalized: number[]): number[] {
   return normalized.map((v) => Math.round((v / 10) * 10) / 10);
 }
 
-/** 透過PNG（1200×1200px）を生成してダウンロード */
-export function downloadChartPng(normalized: number[], filename: string) {
+/** 透過PNG（1200×1200px）を Blob で生成する（ダウンロード・ZIP同梱の共通処理） */
+export async function chartPngBlob(normalized: number[]): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
   canvas.height = 1200;
+  const config = buildConfig(toChartValues(normalized), 40);
   const chart = new Chart(canvas, {
-    ...buildConfig(toChartValues(normalized), 40),
-    options: {
-      ...buildConfig(toChartValues(normalized), 40).options,
-      devicePixelRatio: 1,
-    },
+    ...config,
+    options: { ...config.options, devicePixelRatio: 1 },
   });
-  const url = canvas.toDataURL("image/png"); // 背景を塗らないので透過
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/png") // 背景を塗らないので透過
+  );
   chart.destroy();
+  if (!blob) throw new Error("チャート画像の生成に失敗しました");
+  return blob;
+}
+
+/** 透過PNG（1200×1200px）を生成してダウンロード */
+export async function downloadChartPng(normalized: number[], filename: string) {
+  const blob = await chartPngBlob(normalized);
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export default function RadarChart({
